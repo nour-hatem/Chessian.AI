@@ -1,0 +1,84 @@
+.boardContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.boardWrapper {
+  width: var(--board-size);
+  height: var(--board-size);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow:
+    var(--shadow-lg),
+    0 0 40px rgba(0, 0, 0, 0.3);
+  border: 2px solid var(--border-medium);
+  position: relative;
+}
+
+.board {
+  width: 100%;
+  height: 100%;
+}
+
+/* Import chessground default styles */
+.board :global(cg-board) {
+  background-color: var(--board-dark);
+}
+
+.board :global(cg-board square.white) {
+  background-color: var(--board-light);
+}
+
+.board :global(cg-board square.black) {
+  background-color: var(--board-dark);
+}
+
+.board :global(cg-board square.last-move) {
+  background-color: var(--board-highlight-from);
+}
+
+.board :global(cg-board square.selected) {
+  background-color: var(--board-highlight-to);
+}
+
+.board :global(cg-board square.move-dest) {
+  background: radial-gradient(
+    circle,
+    rgba(124, 92, 252, 0.35) 20%,
+    transparent 20%
+  );
+}
+
+.board :global(cg-board square.move-dest.oc) {
+  background: radial-gradient(
+    circle,
+    transparent 0%,
+    transparent 70%,
+    rgba(124, 92, 252, 0.3) 70%,
+    rgba(124, 92, 252, 0.3) 80%,
+    transparent 80%
+  );
+}
+
+.board :global(cg-board square.check) {
+  background: radial-gradient(
+    circle,
+    rgba(239, 83, 80, 0.8) 0%,
+    rgba(239, 83, 80, 0.3) 40%,
+    transparent 70%
+  );
+}
+
+.boardControls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+@media (max-width: 600px) {
+  .boardWrapper {
+    border-radius: var(--radius-sm);
+  }
+}

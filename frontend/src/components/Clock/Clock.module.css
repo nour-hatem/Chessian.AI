@@ -1,0 +1,63 @@
+.clock {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  min-width: 120px;
+  transition: all var(--transition-fast);
+}
+
+.active {
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 12px rgba(124, 92, 252, 0.2);
+}
+
+.low {
+  border-color: var(--move-mistake);
+}
+
+.critical {
+  border-color: var(--move-blunder);
+  animation: pulse-clock 0.5s ease-in-out infinite;
+}
+
+@keyframes pulse-clock {
+  0%, 100% { box-shadow: 0 0 8px rgba(239, 83, 80, 0.2); }
+  50%      { box-shadow: 0 0 16px rgba(239, 83, 80, 0.5); }
+}
+
+.colorIndicator {
+  display: flex;
+  align-items: center;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.dotWhite {
+  background: #f0f0f5;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+.dotBlack {
+  background: #2a2a2a;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.time {
+  font-family: var(--font-mono);
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text-primary);
+}
+
+.critical .time {
+  color: var(--move-blunder);
+}

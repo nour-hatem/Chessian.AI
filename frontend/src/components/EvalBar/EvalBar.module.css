@@ -1,0 +1,62 @@
+.evalBar {
+  position: relative;
+  width: 28px;
+  height: var(--board-size);
+  background: var(--eval-black);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--border-medium);
+  flex-shrink: 0;
+}
+
+.flipped {
+  transform: rotate(180deg);
+}
+
+.flipped .evalLabel {
+  transform: rotate(180deg);
+}
+
+.whiteSection {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--eval-white);
+  transition: height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.evalLabel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+}
+
+.evalText {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 700;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  letter-spacing: 0.5px;
+}
+
+.evalWhite {
+  color: var(--eval-black);
+}
+
+.evalBlack {
+  color: var(--eval-white);
+}
+
+@media (max-width: 600px) {
+  .evalBar {
+    width: 22px;
+  }
+
+  .evalText {
+    font-size: 0.5rem;
+  }
+}
