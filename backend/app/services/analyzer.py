@@ -46,9 +46,7 @@ def classify_move(cp_loss: float) -> str:
     """Classify a move based on centipawn loss."""
     if cp_loss <= 0:
         return "best"
-    elif cp_loss < 30:
-        return "good"
-    elif cp_loss < 50:
+    elif cp_loss < 25:
         return "good"
     elif cp_loss < 100:
         return "inaccuracy"
@@ -69,7 +67,7 @@ def compute_accuracy(acpl: float) -> float:
     return max(0.0, min(100.0, accuracy))
 
 
-def _score_to_cp(score: chess.engine.PovScore, color: chess.Color) -> float:
+def _score_to_cp(score: chess.engine.PovScore) -> float:
     """Convert engine score to centipawns from white's perspective."""
     pov = score.white()
     if pov.is_mate():
@@ -90,7 +88,8 @@ async def analyze_game(
     """
     Analyze a complete game with Stockfish.
 
-    Returns per-move evaluations and aggregate statistics.
+    Uses a single engine call per move by reusing the previous position's
+    evaluation and best-move data.
     """
     pgn_io = io.StringIO(pgn_text)
     game = chess.pgn.read_game(pgn_io)
@@ -103,10 +102,12 @@ async def analyze_game(
     transport, engine = await chess.engine.popen_uci(stockfish_path)
 
     try:
-        prev_eval: float = 0.0
-        move_number = 0
         white_cp_losses: list[float] = []
         black_cp_losses: list[float] = []
+
+        # Evaluate the starting position once — this gives us eval + best move
+        prev_info = await engine.analyse(board, chess.engine.Limit(depth=depth))
+        prev_eval_white = _score_to_cp(prev_info["score"])
 
         for node in game.mainline():
             move = node.move
@@ -117,28 +118,27 @@ async def analyze_game(
             move_san = board.san(move)
             move_uci = move.uci()
 
-            # Get best move and eval BEFORE the move is made
-            info_before = await engine.analyse(board, chess.engine.Limit(depth=depth))
-            eval_before = _score_to_cp(info_before["score"], board.turn)
-            best_move = info_before.get("pv", [None])[0]
+            # H1 fix: reuse prev_info for best move data (no extra engine call)
+            eval_before = prev_eval_white
+            best_move = prev_info.get("pv", [None])[0]
             best_move_san = board.san(best_move) if best_move else ""
             best_move_uci = best_move.uci() if best_move else ""
-            pv = info_before.get("pv", [])
+            pv = prev_info.get("pv", [])
             best_line = " ".join(m.uci() for m in pv[:5])
 
             # Make the move
             board.push(move)
             fen_after = board.fen()
 
-            # Get eval AFTER the move
+            # Single engine call per move: evaluate the position after the move
             info_after = await engine.analyse(board, chess.engine.Limit(depth=depth))
-            eval_after = _score_to_cp(info_after["score"], board.turn)
+            eval_after_white = _score_to_cp(info_after["score"])
 
             # Compute centipawn loss (from the moving side's perspective)
             if color == "white":
-                cp_loss = max(0, eval_before - (-eval_after))
+                cp_loss = max(0, eval_before - eval_after_white)
             else:
-                cp_loss = max(0, (-eval_before) - eval_after)
+                cp_loss = max(0, eval_after_white - eval_before)
 
             classification = classify_move(cp_loss)
 
@@ -149,8 +149,8 @@ async def analyze_game(
                 move_san=move_san,
                 fen_before=fen_before,
                 fen_after=fen_after,
-                eval_before=eval_before if color == "white" else -eval_before,
-                eval_after=-eval_after if color == "white" else eval_after,
+                eval_before=eval_before,
+                eval_after=eval_after_white,
                 best_move_uci=best_move_uci,
                 best_move_san=best_move_san,
                 best_line=best_line,
@@ -177,7 +177,9 @@ async def analyze_game(
                 elif classification == "inaccuracy":
                     result.black_inaccuracies += 1
 
-            prev_eval = eval_after
+            # Carry forward for next iteration
+            prev_eval_white = eval_after_white
+            prev_info = info_after
 
         # Compute accuracy
         if white_cp_losses:
@@ -194,6 +196,10 @@ async def analyze_game(
                 m.is_critical_moment = True
 
     finally:
-        await engine.quit()
+        # C2 fix: ensure engine process is always cleaned up
+        try:
+            await engine.quit()
+        except Exception:
+            transport.close()
 
     return result
