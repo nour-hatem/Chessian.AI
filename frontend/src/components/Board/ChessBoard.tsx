@@ -89,7 +89,7 @@ export default function ChessBoard({
 
     const api = Chessground(boardRef.current, {
       fen,
-      orientation: boardFlipped ? "black" : "white",
+      orientation: orientation,
       turnColor: getTurnColor(),
       viewOnly,
       movable: {
@@ -147,6 +147,20 @@ export default function ChessBoard({
     });
   }, [fen, interactive, lastMove, getTurnColor, getLegalMoves]);
 
+  // H5 fix: Update event handler when handleMove changes to prevent stale closures
+  useEffect(() => {
+    if (apiRef.current) {
+      apiRef.current.set({
+        events: { move: handleMove },
+      });
+    }
+  }, [handleMove]);
+
+  // M6 fix: Sync orientation when prop changes
+  useEffect(() => {
+    setBoardFlipped(orientation === "black");
+  }, [orientation]);
+
   // Update orientation
   useEffect(() => {
     if (apiRef.current) {
@@ -160,10 +174,7 @@ export default function ChessBoard({
     setBoardFlipped((prev) => !prev);
   }, []);
 
-  // Expose API for parent components
-  useEffect(() => {
-    (window as unknown as Record<string, unknown>).__chessboardApi = apiRef.current;
-  }, []);
+
 
   return (
     <div className={styles.boardContainer} id="chess-board-container">

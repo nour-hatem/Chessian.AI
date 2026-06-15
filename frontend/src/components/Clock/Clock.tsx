@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import styles from "./Clock.module.css";
 
 interface ClockProps {
@@ -33,12 +33,19 @@ export default function Clock({
   const [timeLeft, setTimeLeft] = useState(initialTime);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastTickRef = useRef<number>(Date.now());
+  const onTimeoutRef = useRef(onTimeout);
+
+  // Keep the callback ref fresh without causing effect re-runs
+  useEffect(() => {
+    onTimeoutRef.current = onTimeout;
+  }, [onTimeout]);
 
   const isLow = timeLeft < 30;
   const isCritical = timeLeft < 10;
 
+  // H2 fix: timeLeft removed from deps — timer uses refs to avoid infinite re-runs
   useEffect(() => {
-    if (active && timeLeft > 0) {
+    if (active) {
       lastTickRef.current = Date.now();
       intervalRef.current = setInterval(() => {
         const now = Date.now();
@@ -47,22 +54,22 @@ export default function Clock({
         setTimeLeft((prev) => {
           const next = prev - elapsed;
           if (next <= 0) {
-            onTimeout?.();
+            if (intervalRef.current) clearInterval(intervalRef.current);
+            onTimeoutRef.current?.();
             return 0;
           }
           return next;
         });
       }, 100);
-    } else {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
     }
 
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
     };
-  }, [active, timeLeft, onTimeout]);
+  }, [active]);
 
   // Add increment when clock becomes inactive (move made)
   const prevActive = useRef(active);
@@ -72,10 +79,6 @@ export default function Clock({
     }
     prevActive.current = active;
   }, [active, increment]);
-
-  const addTime = useCallback((seconds: number) => {
-    setTimeLeft((prev) => prev + seconds);
-  }, []);
 
   return (
     <div
