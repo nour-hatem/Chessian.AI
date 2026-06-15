@@ -30,6 +30,7 @@ export default function LibraryPage() {
   const [totalGames, setTotalGames] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [page, setPage] = useState(1);
   const [analyzing, setAnalyzing] = useState<Set<string>>(new Set());
   const pollingIntervalsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
@@ -37,6 +38,7 @@ export default function LibraryPage() {
 
   const fetchGames = useCallback(async () => {
     try {
+      setError("");
       const params = new URLSearchParams({
         page: page.toString(),
         per_page: "20",
@@ -48,9 +50,13 @@ export default function LibraryPage() {
         const data = await resp.json();
         setGames(data.games);
         setTotalGames(data.total);
+      } else {
+        // BUG-27 fix: show error for non-ok responses
+        setError(`Failed to load games (HTTP ${resp.status})`);
       }
     } catch (err) {
       console.error("Failed to fetch games:", err);
+      setError("Cannot connect to backend — is the server running?");
     } finally {
       setLoading(false);
     }

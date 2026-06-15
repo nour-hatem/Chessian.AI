@@ -46,19 +46,6 @@ export default function PlayPage() {
   const chessRef = useRef(new Chess());
   const moveHistoryRef = useRef<string[]>([]);
 
-  const startGame = useCallback(() => {
-    chessRef.current = new Chess();
-    moveHistoryRef.current = [];
-    setFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    setMoves([]);
-    setCurrentMoveIndex(0);
-    setEvaluation(0);
-    setGameOver(false);
-    setGameResult("");
-    setWhiteActive(true);
-    setGameStarted(true);
-  }, []);
-
   const addMoveToList = useCallback((san: string, moveNum: number, isWhite: boolean) => {
     setMoves((prev) => {
       const copy = [...prev];
@@ -92,6 +79,45 @@ export default function PlayPage() {
     return false;
   }, []);
 
+  // BUG-26 fix: helper to make an engine move
+  const makeEngineMove = useCallback((chess: Chess) => {
+    const engineMoves = chess.moves();
+    if (engineMoves.length > 0) {
+      const randomMove = engineMoves[Math.floor(Math.random() * engineMoves.length)];
+      const engineMove = chess.move(randomMove);
+      if (engineMove) {
+        const isEngineWhite = engineMove.color === "w";
+        // BUG-11 fix: use fullmove number from the position before the move
+        const engMoveNum = chess.moveNumber() - (isEngineWhite ? 1 : 0);
+        moveHistoryRef.current.push(engineMove.san);
+        addMoveToList(engineMove.san, engMoveNum, isEngineWhite);
+        setCurrentMoveIndex(moveHistoryRef.current.length);
+        setFen(chess.fen());
+        setWhiteActive(isEngineWhite ? false : true);
+        checkGameEnd(chess);
+      }
+    }
+  }, [addMoveToList, checkGameEnd]);
+
+  const startGame = useCallback(() => {
+    const chess = new Chess();
+    chessRef.current = chess;
+    moveHistoryRef.current = [];
+    setFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    setMoves([]);
+    setCurrentMoveIndex(0);
+    setEvaluation(0);
+    setGameOver(false);
+    setGameResult("");
+    setWhiteActive(true);
+    setGameStarted(true);
+
+    // BUG-26 fix: if playing as black, engine (white) moves first
+    if (playerColor === "black") {
+      setTimeout(() => makeEngineMove(chess), 400);
+    }
+  }, [playerColor, makeEngineMove]);
+
   const handlePlayerMove = useCallback(
     (from: string, to: string, promotion?: string) => {
       const chess = chessRef.current;
@@ -99,37 +125,21 @@ export default function PlayPage() {
 
       if (move) {
         const isWhite = move.color === "w";
-        const moveNum = isWhite ? chess.moveNumber() : chess.moveNumber() - 1;
+        // BUG-11 fix: correct move number — after push, moveNumber() advanced for white
+        const moveNum = chess.moveNumber() - (isWhite ? 1 : 0);
         moveHistoryRef.current.push(move.san);
-        addMoveToList(move.san, isWhite ? moveNum : moveNum, isWhite);
+        addMoveToList(move.san, moveNum, isWhite);
         setCurrentMoveIndex(moveHistoryRef.current.length);
         setFen(chess.fen());
         setWhiteActive(!isWhite);
 
         if (!checkGameEnd(chess)) {
-          // Engine responds (simplified — without actual Stockfish for now)
-          setTimeout(() => {
-            const engineMoves = chess.moves();
-            if (engineMoves.length > 0) {
-              // Simple random move for now — Stockfish integration comes in Step 1.3
-              const randomMove = engineMoves[Math.floor(Math.random() * engineMoves.length)];
-              const engineMove = chess.move(randomMove);
-              if (engineMove) {
-                const isEngineWhite = engineMove.color === "w";
-                const engMoveNum = isEngineWhite ? chess.moveNumber() : chess.moveNumber() - 1;
-                moveHistoryRef.current.push(engineMove.san);
-                addMoveToList(engineMove.san, isEngineWhite ? engMoveNum : engMoveNum, isEngineWhite);
-                setCurrentMoveIndex(moveHistoryRef.current.length);
-                setFen(chess.fen());
-                setWhiteActive(isEngineWhite ? false : true);
-                checkGameEnd(chess);
-              }
-            }
-          }, 300);
+          // Engine responds
+          setTimeout(() => makeEngineMove(chess), 300);
         }
       }
     },
-    [addMoveToList, checkGameEnd]
+    [addMoveToList, checkGameEnd, makeEngineMove]
   );
 
   const tc = TIME_CONTROLS[timeControl];
