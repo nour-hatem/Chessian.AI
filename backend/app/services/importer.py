@@ -1,6 +1,7 @@
 """Import service — fetches games from Chess.com and Lichess APIs."""
 
 import hashlib
+import json
 from typing import AsyncGenerator
 
 import httpx
@@ -35,7 +36,6 @@ async def fetch_lichess_games(
             async for line in resp.aiter_lines():
                 if not line.strip():
                     continue
-                import json
 
                 game_data = json.loads(line)
                 pgn_text = game_data.get("pgn", "")
@@ -46,11 +46,14 @@ async def fetch_lichess_games(
                     "pgn": pgn_text,
                     "white": players.get("white", {}).get("user", {}).get("name", "Unknown"),
                     "black": players.get("black", {}).get("user", {}).get("name", "Unknown"),
-                    "result": _extract_result(game_data.get("winner")),
+                    "result": _extract_lichess_result(
+                        game_data.get("winner"),
+                        game_data.get("status"),
+                    ),
                     "time_control": game_data.get("speed", "unknown"),
                     "opening_eco": opening.get("eco", ""),
                     "opening_name": opening.get("name", ""),
-                    "played_at": game_data.get("createdAt"),
+                    "played_at": _normalize_timestamp(game_data.get("createdAt")),
                     "source": "lichess",
                 }
 
@@ -95,7 +98,10 @@ async def fetch_chesscom_games(
                     "pgn": pgn_text,
                     "white": white_player.get("username", "Unknown"),
                     "black": black_player.get("username", "Unknown"),
-                    "result": white_player.get("result", ""),
+                    "result": _extract_chesscom_result(
+                        white_player.get("result", ""),
+                        black_player.get("result", ""),
+                    ),
                     "time_control": game_data.get("time_class", "unknown"),
                     "opening_eco": _extract_eco_from_pgn(pgn_text),
                     "opening_name": _extract_opening_from_pgn(pgn_text),
@@ -145,13 +151,50 @@ def compute_moves_hash(pgn_text: str) -> str:
     return hashlib.sha256(moves_str.encode()).hexdigest()
 
 
-def _extract_result(winner: str | None) -> str:
-    """Convert Lichess winner field to standard result."""
+def _normalize_timestamp(value) -> int | float | str | None:
+    """Convert millisecond timestamps to seconds for consistent handling."""
+    if isinstance(value, (int, float)) and value > 1e12:
+        # Lichess sends milliseconds — convert to seconds
+        return value / 1000
+    return value
+
+
+def _extract_lichess_result(winner: str | None, status: str | None) -> str:
+    """Convert Lichess winner + status fields to standard PGN result."""
     if winner == "white":
         return "1-0"
     elif winner == "black":
         return "0-1"
+    # No winner — could be draw, abort, or ongoing
+    if status in ("draw", "stalemate"):
+        return "1/2-1/2"
+    if status in ("aborted", "noStart", "started", "created"):
+        return "*"  # Game not completed
+    # Default to draw for timeout/outoftime without winner
     return "1/2-1/2"
+
+
+def _extract_chesscom_result(white_result: str, black_result: str) -> str:
+    """Convert Chess.com player result fields to standard PGN result.
+
+    Chess.com returns per-player results like 'win', 'checkmated',
+    'resigned', 'timeout', 'stalemate', 'agreed', 'repetition', etc.
+    """
+    if white_result == "win":
+        return "1-0"
+    if black_result == "win":
+        return "0-1"
+    # Both sides non-win: could be draw or abandonment
+    draw_results = {"stalemate", "agreed", "repetition", "insufficient", "50move", "timevsinsufficient"}
+    if white_result in draw_results or black_result in draw_results:
+        return "1/2-1/2"
+    # Resign/timeout/checkmated — the other side won
+    loss_results = {"resigned", "timeout", "checkmated", "abandoned"}
+    if white_result in loss_results:
+        return "0-1"
+    if black_result in loss_results:
+        return "1-0"
+    return "*"
 
 
 def _extract_eco_from_pgn(pgn_text: str) -> str:

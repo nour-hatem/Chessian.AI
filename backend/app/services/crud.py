@@ -177,7 +177,7 @@ async def get_move_analyses(
     stmt = (
         select(MoveAnalysis)
         .where(MoveAnalysis.game_id == game_id)
-        .order_by(MoveAnalysis.move_number, MoveAnalysis.color)
+        .order_by(MoveAnalysis.move_number, MoveAnalysis.color.desc())  # 'w' before 'b'
     )
     result = await db.execute(stmt)
     return list(result.scalars().all())
