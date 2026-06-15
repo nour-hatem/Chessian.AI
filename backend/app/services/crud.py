@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, case, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -177,7 +177,10 @@ async def get_move_analyses(
     stmt = (
         select(MoveAnalysis)
         .where(MoveAnalysis.game_id == game_id)
-        .order_by(MoveAnalysis.move_number, MoveAnalysis.color.desc())  # 'w' before 'b'
+        .order_by(
+            MoveAnalysis.move_number,
+            case({"white": 0, "black": 1}, value=MoveAnalysis.color),  # BUG-08 fix: white before black
+        )
     )
     result = await db.execute(stmt)
     return list(result.scalars().all())
@@ -205,9 +208,15 @@ async def save_analysis_results(
     analysis.black_blunders = analysis_data.get("black_blunders", 0)
     analysis.black_mistakes = analysis_data.get("black_mistakes", 0)
     analysis.black_inaccuracies = analysis_data.get("black_inaccuracies", 0)
+    analysis.opening_accuracy = analysis_data.get("opening_accuracy")
+    analysis.middlegame_accuracy = analysis_data.get("middlegame_accuracy")
+    analysis.endgame_accuracy = analysis_data.get("endgame_accuracy")
     analysis.critical_moments = analysis_data.get("critical_moments")
     analysis.status = "complete"
     analysis.completed_at = datetime.now(timezone.utc)
+
+    # BUG-16 fix: delete old move analyses before re-inserting
+    await db.execute(delete(MoveAnalysis).where(MoveAnalysis.game_id == game_id))
 
     # Bulk create move analysis records
     for mv in move_evals:
@@ -228,6 +237,8 @@ async def save_analysis_results(
             cp_loss=mv.get("cp_loss"),
             classification=mv.get("classification"),
             is_critical_moment=mv.get("is_critical_moment", False),
+            tactical_motifs=mv.get("tactical_motifs"),  # BUG-19 fix
+            time_spent=mv.get("time_spent"),  # BUG-19 fix
         )
         db.add(move_analysis)
 

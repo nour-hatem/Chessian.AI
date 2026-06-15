@@ -2,11 +2,14 @@
 
 import hashlib
 import json
+import logging
 from typing import AsyncGenerator
 
 import httpx
 import chess.pgn
 import io
+
+logger = logging.getLogger(__name__)
 
 
 async def fetch_lichess_games(
@@ -37,7 +40,12 @@ async def fetch_lichess_games(
                 if not line.strip():
                     continue
 
-                game_data = json.loads(line)
+                # BUG-05 fix: skip malformed NDJSON lines instead of crashing
+                try:
+                    game_data = json.loads(line)
+                except json.JSONDecodeError:
+                    logger.warning("Skipping malformed NDJSON line in Lichess stream")
+                    continue
                 pgn_text = game_data.get("pgn", "")
                 players = game_data.get("players", {})
                 opening = game_data.get("opening", {})
@@ -94,6 +102,9 @@ async def fetch_chesscom_games(
                 white_player = game_data.get("white", {})
                 black_player = game_data.get("black", {})
 
+                # BUG-06/07 fix: parse PGN headers once instead of twice
+                pgn_headers = _extract_pgn_headers(pgn_text)
+
                 yield {
                     "pgn": pgn_text,
                     "white": white_player.get("username", "Unknown"),
@@ -103,8 +114,8 @@ async def fetch_chesscom_games(
                         black_player.get("result", ""),
                     ),
                     "time_control": game_data.get("time_class", "unknown"),
-                    "opening_eco": _extract_eco_from_pgn(pgn_text),
-                    "opening_name": _extract_opening_from_pgn(pgn_text),
+                    "opening_eco": pgn_headers.get("eco", ""),
+                    "opening_name": pgn_headers.get("opening", ""),
                     "played_at": game_data.get("end_time"),
                     "source": "chesscom",
                 }
@@ -197,19 +208,15 @@ def _extract_chesscom_result(white_result: str, black_result: str) -> str:
     return "*"
 
 
-def _extract_eco_from_pgn(pgn_text: str) -> str:
-    """Extract ECO code from PGN headers."""
+def _extract_pgn_headers(pgn_text: str) -> dict:
+    """Extract ECO and opening name from PGN headers in a single parse."""
+    if not pgn_text:
+        return {"eco": "", "opening": ""}
     pgn_io = io.StringIO(pgn_text)
     game = chess.pgn.read_game(pgn_io)
     if game:
-        return game.headers.get("ECO", "")
-    return ""
-
-
-def _extract_opening_from_pgn(pgn_text: str) -> str:
-    """Extract opening name from PGN headers."""
-    pgn_io = io.StringIO(pgn_text)
-    game = chess.pgn.read_game(pgn_io)
-    if game:
-        return game.headers.get("Opening", "")
-    return ""
+        return {
+            "eco": game.headers.get("ECO", ""),
+            "opening": game.headers.get("Opening", ""),
+        }
+    return {"eco": "", "opening": ""}

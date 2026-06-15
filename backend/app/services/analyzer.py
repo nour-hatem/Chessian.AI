@@ -40,11 +40,16 @@ class GameEvalResult:
     black_blunders: int = 0
     black_mistakes: int = 0
     black_inaccuracies: int = 0
+    opening_accuracy: float | None = None
+    middlegame_accuracy: float | None = None
+    endgame_accuracy: float | None = None
 
 
-def classify_move(cp_loss: float) -> str:
+def classify_move(cp_loss: float, is_best_move: bool = False) -> str:
     """Classify a move based on centipawn loss."""
-    if cp_loss <= 0:
+    if cp_loss < 0:
+        return "brilliant"  # Move improved eval beyond best line (rare, depth variance)
+    if cp_loss == 0 or is_best_move:
         return "best"
     elif cp_loss < 25:
         return "good"
@@ -140,7 +145,8 @@ async def analyze_game(
             else:
                 cp_loss = max(0, eval_after_white - eval_before)
 
-            classification = classify_move(cp_loss)
+            is_best = best_move is not None and move == best_move
+            classification = classify_move(cp_loss, is_best_move=is_best)
 
             move_eval = MoveEval(
                 move_number=move_number,
@@ -189,6 +195,29 @@ async def analyze_game(
             black_acpl = sum(black_cp_losses) / len(black_cp_losses)
             result.black_accuracy = compute_accuracy(black_acpl)
 
+        # BUG-18 fix: Compute phase-separated accuracy
+        total_moves = len(result.moves)
+        if total_moves > 0:
+            opening_end = min(20, total_moves)  # First ~10 moves (20 half-moves)
+            endgame_start = max(opening_end, total_moves - 20)  # Last ~10 moves
+
+            opening_losses = [m.cp_loss for m in result.moves[:opening_end]]
+            middle_losses = [m.cp_loss for m in result.moves[opening_end:endgame_start]]
+            endgame_losses = [m.cp_loss for m in result.moves[endgame_start:]]
+
+            if opening_losses:
+                result.opening_accuracy = compute_accuracy(
+                    sum(opening_losses) / len(opening_losses)
+                )
+            if middle_losses:
+                result.middlegame_accuracy = compute_accuracy(
+                    sum(middle_losses) / len(middle_losses)
+                )
+            if endgame_losses:
+                result.endgame_accuracy = compute_accuracy(
+                    sum(endgame_losses) / len(endgame_losses)
+                )
+
         # Mark critical moments (top 5 highest cp_loss moves)
         sorted_moves = sorted(result.moves, key=lambda m: m.cp_loss, reverse=True)
         for m in sorted_moves[:5]:
@@ -196,10 +225,12 @@ async def analyze_game(
                 m.is_critical_moment = True
 
     finally:
-        # C2 fix: ensure engine process is always cleaned up
+        # BUG-04 fix: ensure engine process is always cleaned up
         try:
             await engine.quit()
         except Exception:
+            pass
+        finally:
             transport.close()
 
     return result

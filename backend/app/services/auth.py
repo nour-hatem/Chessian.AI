@@ -7,6 +7,7 @@ For now, all requests are attributed to a single dev user that is auto-created.
 import uuid
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import User
@@ -20,21 +21,20 @@ DEV_EMAIL = "dev@chessian.ai"
 async def ensure_dev_user(db: AsyncSession) -> uuid.UUID:
     """Ensure the dev user exists in the database. Returns user ID.
 
-    Uses the caller's session to avoid double-session conflicts
-    with FastAPI's dependency injection.
+    Uses an atomic INSERT ... ON CONFLICT DO NOTHING to avoid
+    race conditions when multiple requests arrive simultaneously.
     """
-    stmt = select(User).where(User.id == DEV_USER_ID)
-    result = await db.execute(stmt)
-    user = result.scalar_one_or_none()
-
-    if user is None:
-        user = User(
+    stmt = (
+        pg_insert(User)
+        .values(
             id=DEV_USER_ID,
             username=DEV_USERNAME,
             email=DEV_EMAIL,
             hashed_password="dev-no-password",
         )
-        db.add(user)
-        await db.flush()
+        .on_conflict_do_nothing(index_elements=["id"])
+    )
+    await db.execute(stmt)
+    await db.flush()
 
     return DEV_USER_ID
