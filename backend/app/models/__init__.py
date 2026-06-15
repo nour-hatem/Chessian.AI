@@ -1,7 +1,7 @@
 """Database models for Chessian.AI."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     Column,
@@ -34,7 +34,7 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
     lichess_username = Column(String(100), nullable=True)
     chesscom_username = Column(String(100), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     games = relationship("Game", back_populates="user")
 
@@ -45,7 +45,7 @@ class Game(Base):
     __tablename__ = "games"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     source = Column(String(20), nullable=False)  # lichess, chesscom, pgn_upload, platform
     pgn = Column(Text, nullable=False)
     moves_hash = Column(String(64), nullable=True)  # SHA256 for dedup
@@ -55,9 +55,9 @@ class Game(Base):
     time_control = Column(String(20))
     opening_eco = Column(String(10))
     opening_name = Column(String(200))
-    played_at = Column(DateTime)
+    played_at = Column(DateTime(timezone=True))
     clock_data = Column(JSON, nullable=True)  # per-move clock times
-    imported_at = Column(DateTime, default=datetime.utcnow)
+    imported_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     user = relationship("User", back_populates="games")
     analysis = relationship("GameAnalysis", back_populates="game", uselist=False)
@@ -70,7 +70,7 @@ class GameAnalysis(Base):
     __tablename__ = "game_analyses"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    game_id = Column(UUID(as_uuid=True), ForeignKey("games.id"), unique=True, nullable=False)
+    game_id = Column(UUID(as_uuid=True), ForeignKey("games.id", ondelete="CASCADE"), unique=True, nullable=False)
     white_accuracy = Column(Float)
     black_accuracy = Column(Float)
     white_blunders = Column(Integer, default=0)
@@ -85,7 +85,7 @@ class GameAnalysis(Base):
     analysis_depth = Column(Integer)
     status = Column(String(20), default="pending")  # pending, processing, complete, failed
     critical_moments = Column(JSON, nullable=True)
-    completed_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
 
     game = relationship("Game", back_populates="analysis")
 
@@ -96,7 +96,7 @@ class MoveAnalysis(Base):
     __tablename__ = "move_analyses"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    game_id = Column(UUID(as_uuid=True), ForeignKey("games.id"), nullable=False)
+    game_id = Column(UUID(as_uuid=True), ForeignKey("games.id", ondelete="CASCADE"), nullable=False)
     move_number = Column(Integer, nullable=False)
     color = Column(String(5), nullable=False)  # white / black
     move_uci = Column(String(10))
@@ -125,10 +125,10 @@ class MoveExplanation(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     move_analysis_id = Column(
-        UUID(as_uuid=True), ForeignKey("move_analyses.id"), unique=True, nullable=False
+        UUID(as_uuid=True), ForeignKey("move_analyses.id", ondelete="CASCADE"), unique=True, nullable=False
     )
     explanation = Column(Text, nullable=False)
     model_used = Column(String(50))
-    generated_at = Column(DateTime, default=datetime.utcnow)
+    generated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     move_analysis = relationship("MoveAnalysis", back_populates="explanation")

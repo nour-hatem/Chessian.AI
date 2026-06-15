@@ -31,15 +31,18 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     FastAPI dependency — yields an async database session.
 
+    Routers are responsible for calling ``await db.commit()`` explicitly.
+    This dependency only handles rollback on unhandled errors.
+
     Usage:
         @router.get("/example")
         async def endpoint(db: AsyncSession = Depends(get_db)):
             ...
+            await db.commit()
     """
     async with async_session() as session:
         try:
             yield session
-            await session.commit()
         except Exception:
             await session.rollback()
             raise
