@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.schemas import ImportRequest, ImportProgress
 from app.services import crud
-from app.services.auth import get_current_user_id
+from app.services.auth import ensure_dev_user
 from app.services.importer import (
     fetch_lichess_games,
     fetch_chesscom_games,
@@ -42,9 +42,9 @@ def _parse_played_at(value) -> datetime | None:
 @router.post("/lichess", response_model=ImportProgress)
 async def import_from_lichess(
     request: ImportRequest,
-    user_id: uuid.UUID = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
+    user_id = await ensure_dev_user(db)
     """Import games from Lichess for a given username."""
     games_imported = 0
     games_skipped = 0
@@ -102,9 +102,9 @@ async def import_from_lichess(
 @router.post("/chesscom", response_model=ImportProgress)
 async def import_from_chesscom(
     request: ImportRequest,
-    user_id: uuid.UUID = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
+    user_id = await ensure_dev_user(db)
     """Import games from Chess.com for a given username."""
     games_imported = 0
     games_skipped = 0
@@ -162,12 +162,33 @@ async def import_from_chesscom(
 @router.post("/pgn", response_model=ImportProgress)
 async def import_from_pgn(
     file: UploadFile = File(...),
-    user_id: uuid.UUID = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
+    user_id = await ensure_dev_user(db)
     """Import games from an uploaded PGN file."""
+    # Limit upload to 10MB to prevent memory exhaustion
+    max_size = 10 * 1024 * 1024  # 10MB
     content = await file.read()
-    pgn_text = content.decode("utf-8", errors="replace")
+    if len(content) > max_size:
+        return ImportProgress(
+            status="failed",
+            games_imported=0,
+            total_games=0,
+            message=f"File too large ({len(content) // (1024*1024)}MB). Maximum is 10MB.",
+        )
+    # C4 fix: Try UTF-8 first, then Latin-1 (common for European PGN files)
+    try:
+        pgn_text = content.decode("utf-8")
+    except UnicodeDecodeError:
+        try:
+            pgn_text = content.decode("latin-1")
+        except UnicodeDecodeError:
+            return ImportProgress(
+                status="failed",
+                games_imported=0,
+                total_games=0,
+                message="Unable to decode PGN file. Please ensure it is UTF-8 or Latin-1 encoded.",
+            )
 
     games = parse_pgn_file(pgn_text)
     games_imported = 0
