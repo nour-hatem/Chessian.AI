@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { Chess } from "chess.js";
 import Navbar from "@/components/Layout/Navbar";
 import ChessBoard from "@/components/Board/ChessBoard";
@@ -92,7 +92,6 @@ function formatDate(dateStr: string | null): string {
 /* ─── Component ─── */
 export default function AnalysisPage() {
   const params = useParams();
-  const router = useRouter();
   const gameId = params.id as string;
 
   const [gameMeta, setGameMeta] = useState<GameMeta | null>(null);
@@ -234,10 +233,22 @@ export default function AnalysisPage() {
     [fenHistory.length]
   );
 
-  const goFirst = () => goToMove(0);
-  const goPrev = () => goToMove(currentMoveIndex - 1);
-  const goNext = () => goToMove(currentMoveIndex + 1);
-  const goLast = () => goToMove(fenHistory.length - 1);
+  const goFirst = useCallback(() => goToMove(0), [goToMove]);
+  const goPrev = useCallback(
+    () => setCurrentMoveIndex((prev) => Math.max(0, prev - 1)),
+    []
+  );
+  const goNext = useCallback(
+    () =>
+      setCurrentMoveIndex((prev) =>
+        Math.min(fenHistory.length - 1, prev + 1)
+      ),
+    [fenHistory.length]
+  );
+  const goLast = useCallback(
+    () => goToMove(fenHistory.length - 1),
+    [goToMove, fenHistory.length]
+  );
 
   /* ─── Keyboard navigation ─── */
   useEffect(() => {
@@ -249,14 +260,22 @@ export default function AnalysisPage() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  });
+  }, [goPrev, goNext, goFirst, goLast]);
 
   /* ─── Find move index from analysis move ─── */
-  const findMoveIndex = (m: MoveAnalysis): number => {
-    if (!analysis?.moves) return 0;
-    const idx = analysis.moves.indexOf(m);
-    return idx >= 0 ? idx + 1 : 0;
-  };
+  const findMoveIndex = useCallback(
+    (m: MoveAnalysis): number => {
+      if (!analysis?.moves) return 0;
+      const idx = analysis.moves.findIndex(
+        (mv) =>
+          mv.move_number === m.move_number &&
+          mv.color === m.color &&
+          mv.move_san === m.move_san
+      );
+      return idx >= 0 ? idx + 1 : 0;
+    },
+    [analysis]
+  );
 
   /* ─── Loading state ─── */
   if (loading) {
