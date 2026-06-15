@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect, useCallback, useState } from "react";
 import styles from "./EvalChart.module.css";
 
 interface EvalPoint {
@@ -39,9 +39,23 @@ export default function EvalChart({
 }: EvalChartProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(600);
 
-  const getWidth = useCallback((): number => {
-    return containerRef.current?.clientWidth || 600;
+  // Track actual container width with ResizeObserver
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setWidth(entry.contentRect.width || 600);
+      }
+    });
+    observer.observe(container);
+    // Set initial width
+    setWidth(container.clientWidth || 600);
+
+    return () => observer.disconnect();
   }, []);
 
   const handleClick = useCallback(
@@ -52,11 +66,9 @@ export default function EvalChart({
 
       const rect = svg.getBoundingClientRect();
       const x = e.clientX - rect.left;
-      const width = rect.width;
-      const padding = 0;
-      const chartWidth = width - padding * 2;
+      const chartWidth = rect.width;
 
-      const ratio = Math.max(0, Math.min(1, (x - padding) / chartWidth));
+      const ratio = Math.max(0, Math.min(1, x / chartWidth));
       const moveIndex = Math.round(ratio * (evalData.length - 1));
       const point = evalData[moveIndex];
       if (point) {
@@ -66,11 +78,6 @@ export default function EvalChart({
     [onMoveClick, evalData]
   );
 
-  // Render SVG chart
-  useEffect(() => {
-    // Force a re-render cycle when data changes
-  }, [evalData, currentMoveIndex]);
-
   if (evalData.length === 0) {
     return (
       <div className={styles.chartContainer} ref={containerRef}>
@@ -79,7 +86,6 @@ export default function EvalChart({
     );
   }
 
-  const width = getWidth();
   const paddingX = 0;
   const paddingY = 4;
   const chartWidth = width - paddingX * 2;
