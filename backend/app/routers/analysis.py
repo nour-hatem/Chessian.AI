@@ -1,5 +1,6 @@
 """Analysis router — triggers and retrieves game analyses."""
 
+import logging
 import uuid
 from dataclasses import asdict
 
@@ -10,10 +11,11 @@ from app.config import settings
 from app.database import get_db, async_session
 from app.schemas import GameAnalysisResponse, MoveAnalysisResponse
 from app.services import crud
-from app.services.auth import get_current_user_id
+from app.services.auth import ensure_dev_user
 from app.services.analyzer import analyze_game
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 async def _run_analysis_background(game_id: uuid.UUID, pgn: str, depth: int):
@@ -64,12 +66,16 @@ async def _run_analysis_background(game_id: uuid.UUID, pgn: str, depth: int):
             await db.commit()
 
         except Exception as e:
-            # Mark as failed
-            analysis = await crud.get_game_analysis(db, game_id)
-            if analysis:
-                analysis.status = "failed"
-                await db.commit()
-            raise
+            # C1 fix: rollback the broken transaction before recovery query
+            await db.rollback()
+            logger.exception("Background analysis failed for game %s: %s", game_id, e)
+            try:
+                analysis = await crud.get_game_analysis(db, game_id)
+                if analysis:
+                    analysis.status = "failed"
+                    await db.commit()
+            except Exception:
+                logger.exception("Failed to mark analysis as failed for game %s", game_id)
 
 
 @router.post("/{game_id}")
@@ -77,9 +83,9 @@ async def trigger_analysis(
     game_id: uuid.UUID,
     depth: int = 20,
     background_tasks: BackgroundTasks = BackgroundTasks(),
-    user_id: uuid.UUID = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
+    user_id = await ensure_dev_user(db)
     """Trigger Stockfish analysis for a game."""
     # Verify game exists and belongs to user
     game = await crud.get_game(db, game_id, user_id)
@@ -95,9 +101,14 @@ async def trigger_analysis(
             "message": f"Analysis already {existing.status}",
         }
 
-    # Create analysis record (or reuse failed one)
+    # Create analysis record (or reuse/reset a failed one)
     if existing is None:
         await crud.create_game_analysis(db, game_id, depth)
+        await db.commit()
+    elif existing.status == "failed":
+        # M4 fix: reset failed analysis so it can be retried
+        existing.status = "pending"
+        existing.analysis_depth = depth
         await db.commit()
 
     # Queue background analysis
@@ -119,9 +130,9 @@ async def trigger_analysis(
 @router.get("/{game_id}", response_model=GameAnalysisResponse)
 async def get_analysis(
     game_id: uuid.UUID,
-    user_id: uuid.UUID = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
+    user_id = await ensure_dev_user(db)
     """Get analysis results for a game."""
     # Verify game belongs to user
     game = await crud.get_game(db, game_id, user_id)
@@ -172,9 +183,9 @@ async def get_analysis(
 @router.get("/{game_id}/critical-moments")
 async def get_critical_moments(
     game_id: uuid.UUID,
-    user_id: uuid.UUID = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
+    user_id = await ensure_dev_user(db)
     """Get critical moments for an analyzed game."""
     game = await crud.get_game(db, game_id, user_id)
     if game is None:
