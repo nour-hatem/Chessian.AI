@@ -1,76 +1,199 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Navbar from "@/components/Layout/Navbar";
 import styles from "./library.module.css";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 interface ImportedGame {
   id: string;
-  white: string;
-  black: string;
-  result: string;
-  opening: string;
-  date: string;
-  source: "lichess" | "chesscom" | "pgn";
-  timeControl: string;
+  white_username: string | null;
+  black_username: string | null;
+  result: string | null;
+  opening_name: string | null;
+  opening_eco: string | null;
+  played_at: string | null;
+  source: string;
+  time_control: string | null;
+  has_analysis: boolean;
+  imported_at: string;
 }
-
-// Demo data for UI showcase
-const DEMO_GAMES: ImportedGame[] = [
-  {
-    id: "1", white: "You", black: "opponent_42", result: "1-0",
-    opening: "Sicilian Defense: Najdorf", date: "2026-06-12",
-    source: "lichess", timeControl: "5+3",
-  },
-  {
-    id: "2", white: "chess_master", black: "You", result: "0-1",
-    opening: "Queen's Gambit Declined", date: "2026-06-11",
-    source: "chesscom", timeControl: "10+0",
-  },
-  {
-    id: "3", white: "You", black: "rapid_player", result: "1/2-1/2",
-    opening: "Ruy Lopez: Berlin Defense", date: "2026-06-10",
-    source: "lichess", timeControl: "15+10",
-  },
-];
 
 export default function LibraryPage() {
   const [username, setUsername] = useState("");
   const [platform, setPlatform] = useState<"lichess" | "chesscom">("lichess");
   const [importing, setImporting] = useState(false);
-  const [games, setGames] = useState<ImportedGame[]>(DEMO_GAMES);
+  const [importMessage, setImportMessage] = useState("");
+  const [games, setGames] = useState<ImportedGame[]>([]);
+  const [totalGames, setTotalGames] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [analyzing, setAnalyzing] = useState<Set<string>>(new Set());
+
+  const fetchGames = useCallback(async () => {
+    try {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        per_page: "20",
+      });
+      if (searchQuery) params.set("search", searchQuery);
+
+      const resp = await fetch(`${API_BASE}/api/games?${params}`);
+      if (resp.ok) {
+        const data = await resp.json();
+        setGames(data.games);
+        setTotalGames(data.total);
+      }
+    } catch (err) {
+      console.error("Failed to fetch games:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [page, searchQuery]);
+
+  useEffect(() => {
+    fetchGames();
+  }, [fetchGames]);
+
+  // Debounced search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1);
+      fetchGames();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleImport = async () => {
     if (!username.trim()) return;
     setImporting(true);
-    // TODO: connect to backend API
-    setTimeout(() => {
+    setImportMessage("");
+
+    try {
+      const resp = await fetch(`${API_BASE}/api/import/${platform}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username.trim(), max_games: 100 }),
+      });
+      const data = await resp.json();
+      setImportMessage(data.message);
+
+      if (data.status === "complete" && data.games_imported > 0) {
+        // Refresh game list
+        await fetchGames();
+      }
+    } catch (err) {
+      setImportMessage("Import failed — is the backend running?");
+    } finally {
       setImporting(false);
-    }, 2000);
+    }
   };
 
-  const filteredGames = games.filter(
-    (g) =>
-      g.opening.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      g.white.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      g.black.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const handlePgnUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    setImportMessage("");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const resp = await fetch(`${API_BASE}/api/import/pgn`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await resp.json();
+      setImportMessage(data.message);
+
+      if (data.status === "complete" && data.games_imported > 0) {
+        await fetchGames();
+      }
+    } catch (err) {
+      setImportMessage("Upload failed — is the backend running?");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleAnalyze = async (gameId: string) => {
+    setAnalyzing((prev) => new Set(prev).add(gameId));
+
+    try {
+      const resp = await fetch(`${API_BASE}/api/analysis/${gameId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await resp.json();
+
+      if (data.status === "queued") {
+        // Poll for completion
+        pollAnalysis(gameId);
+      }
+    } catch (err) {
+      console.error("Failed to trigger analysis:", err);
+      setAnalyzing((prev) => {
+        const next = new Set(prev);
+        next.delete(gameId);
+        return next;
+      });
+    }
+  };
+
+  const pollAnalysis = (gameId: string) => {
+    const interval = setInterval(async () => {
+      try {
+        const resp = await fetch(`${API_BASE}/api/analysis/${gameId}`);
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.status === "complete" || data.status === "failed") {
+            clearInterval(interval);
+            setAnalyzing((prev) => {
+              const next = new Set(prev);
+              next.delete(gameId);
+              return next;
+            });
+            await fetchGames();
+          }
+        }
+      } catch {
+        clearInterval(interval);
+      }
+    }, 3000);
+  };
 
   const getSourceBadge = (source: string) => {
     switch (source) {
       case "lichess": return "♞ Lichess";
       case "chesscom": return "♟ Chess.com";
-      case "pgn": return "📄 PGN";
+      case "pgn_upload": return "📄 PGN";
       default: return source;
     }
   };
 
-  const getResultClass = (result: string) => {
+  const getResultClass = (result: string | null) => {
     if (result === "1-0") return styles.resultWin;
     if (result === "0-1") return styles.resultLoss;
     return styles.resultDraw;
   };
+
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return "";
+    try {
+      return new Date(dateStr).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const totalPages = Math.ceil(totalGames / 20);
 
   return (
     <>
@@ -107,6 +230,7 @@ export default function LibraryPage() {
                   onChange={(e) => setUsername(e.target.value)}
                   className={styles.input}
                   id="input-username"
+                  onKeyDown={(e) => e.key === "Enter" && handleImport()}
                 />
                 <button
                   className="btn-primary"
@@ -121,9 +245,17 @@ export default function LibraryPage() {
                 <span className={styles.orDivider}>or</span>
                 <label className={styles.uploadLabel} id="btn-upload-pgn">
                   📄 Upload PGN File
-                  <input type="file" accept=".pgn" hidden />
+                  <input
+                    type="file"
+                    accept=".pgn"
+                    hidden
+                    onChange={handlePgnUpload}
+                  />
                 </label>
               </div>
+              {importMessage && (
+                <p className={styles.importMessage}>{importMessage}</p>
+              )}
             </div>
           </div>
 
@@ -138,40 +270,95 @@ export default function LibraryPage() {
               id="input-search"
             />
             <span className={styles.gameCount}>
-              {filteredGames.length} game{filteredGames.length !== 1 ? "s" : ""}
+              {totalGames} game{totalGames !== 1 ? "s" : ""}
             </span>
           </div>
 
           {/* Games List */}
           <div className={styles.gamesList}>
-            {filteredGames.map((game) => (
-              <div key={game.id} className={styles.gameCard} id={`game-${game.id}`}>
-                <div className={styles.gameMain}>
-                  <div className={styles.gamePlayers}>
-                    <span className={styles.playerWhite}>⬜ {game.white}</span>
-                    <span className={styles.vs}>vs</span>
-                    <span className={styles.playerBlack}>⬛ {game.black}</span>
-                  </div>
-                  <span className={`${styles.gameResult} ${getResultClass(game.result)}`}>
-                    {game.result}
-                  </span>
-                </div>
-                <div className={styles.gameMeta}>
-                  <span className={styles.gameOpening}>{game.opening}</span>
-                  <span className={styles.gameDot}>·</span>
-                  <span className={styles.gameTime}>{game.timeControl}</span>
-                  <span className={styles.gameDot}>·</span>
-                  <span className={styles.gameDate}>{game.date}</span>
-                  <span className={styles.sourceBadge}>{getSourceBadge(game.source)}</span>
-                </div>
-                <div className={styles.gameActions}>
-                  <button className="btn-secondary" id={`analyze-${game.id}`}>
-                    🔍 Analyze
-                  </button>
-                </div>
+            {loading ? (
+              <div className={styles.loadingState}>Loading games...</div>
+            ) : games.length === 0 ? (
+              <div className={styles.emptyState}>
+                <p>No games yet. Import from Lichess, Chess.com, or upload a PGN file.</p>
               </div>
-            ))}
+            ) : (
+              games.map((game) => (
+                <div key={game.id} className={styles.gameCard} id={`game-${game.id}`}>
+                  <div className={styles.gameMain}>
+                    <div className={styles.gamePlayers}>
+                      <span className={styles.playerWhite}>
+                        ⬜ {game.white_username || "Unknown"}
+                      </span>
+                      <span className={styles.vs}>vs</span>
+                      <span className={styles.playerBlack}>
+                        ⬛ {game.black_username || "Unknown"}
+                      </span>
+                    </div>
+                    <span className={`${styles.gameResult} ${getResultClass(game.result)}`}>
+                      {game.result || "?"}
+                    </span>
+                  </div>
+                  <div className={styles.gameMeta}>
+                    <span className={styles.gameOpening}>
+                      {game.opening_name || game.opening_eco || "—"}
+                    </span>
+                    <span className={styles.gameDot}>·</span>
+                    <span className={styles.gameTime}>{game.time_control || "—"}</span>
+                    <span className={styles.gameDot}>·</span>
+                    <span className={styles.gameDate}>
+                      {formatDate(game.played_at)}
+                    </span>
+                    <span className={styles.sourceBadge}>
+                      {getSourceBadge(game.source)}
+                    </span>
+                  </div>
+                  <div className={styles.gameActions}>
+                    {game.has_analysis ? (
+                      <button className="btn-secondary" id={`view-${game.id}`}>
+                        📊 View Analysis
+                      </button>
+                    ) : analyzing.has(game.id) ? (
+                      <button className="btn-secondary" disabled>
+                        ⏳ Analyzing...
+                      </button>
+                    ) : (
+                      <button
+                        className="btn-secondary"
+                        onClick={() => handleAnalyze(game.id)}
+                        id={`analyze-${game.id}`}
+                      >
+                        🔍 Analyze
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className={styles.pagination}>
+              <button
+                className="btn-secondary"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+              >
+                ← Prev
+              </button>
+              <span className={styles.pageInfo}>
+                Page {page} of {totalPages}
+              </span>
+              <button
+                className="btn-secondary"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+              >
+                Next →
+              </button>
+            </div>
+          )}
         </div>
       </main>
     </>
