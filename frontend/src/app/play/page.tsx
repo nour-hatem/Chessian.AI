@@ -99,7 +99,7 @@ export default function PlayPage() {
 
       if (move) {
         const isWhite = move.color === "w";
-        const moveNum = Math.ceil(chess.moveNumber() / 1);
+        const moveNum = isWhite ? chess.moveNumber() : chess.moveNumber() - 1;
         moveHistoryRef.current.push(move.san);
         addMoveToList(move.san, isWhite ? moveNum : moveNum, isWhite);
         setCurrentMoveIndex(moveHistoryRef.current.length);
@@ -116,7 +116,7 @@ export default function PlayPage() {
               const engineMove = chess.move(randomMove);
               if (engineMove) {
                 const isEngineWhite = engineMove.color === "w";
-                const engMoveNum = Math.ceil(chess.moveNumber() / 1);
+                const engMoveNum = isEngineWhite ? chess.moveNumber() : chess.moveNumber() - 1;
                 moveHistoryRef.current.push(engineMove.san);
                 addMoveToList(engineMove.san, isEngineWhite ? engMoveNum : engMoveNum, isEngineWhite);
                 setCurrentMoveIndex(moveHistoryRef.current.length);

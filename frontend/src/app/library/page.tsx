@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/Layout/Navbar";
 import styles from "./library.module.css";
@@ -32,6 +32,7 @@ export default function LibraryPage() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [analyzing, setAnalyzing] = useState<Set<string>>(new Set());
+  const pollingIntervalsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const router = useRouter();
 
   const fetchGames = useCallback(async () => {
@@ -55,18 +56,17 @@ export default function LibraryPage() {
     }
   }, [page, searchQuery]);
 
-  useEffect(() => {
-    fetchGames();
-  }, [fetchGames]);
-
-  // Debounced search
+  // H8 fix: single debounced effect for search — no double fetch
   useEffect(() => {
     const timer = setTimeout(() => {
       setPage(1);
-      fetchGames();
     }, 300);
     return () => clearTimeout(timer);
-  }, [searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [searchQuery]);
+
+  useEffect(() => {
+    fetchGames();
+  }, [fetchGames]);
 
   const handleImport = async () => {
     if (!username.trim()) return;
@@ -153,6 +153,7 @@ export default function LibraryPage() {
           const data = await resp.json();
           if (data.status === "complete" || data.status === "failed") {
             clearInterval(interval);
+            pollingIntervalsRef.current.delete(gameId);
             setAnalyzing((prev) => {
               const next = new Set(prev);
               next.delete(gameId);
@@ -163,9 +164,20 @@ export default function LibraryPage() {
         }
       } catch {
         clearInterval(interval);
+        pollingIntervalsRef.current.delete(gameId);
       }
     }, 3000);
+    // H3 fix: track interval for cleanup on unmount
+    pollingIntervalsRef.current.set(gameId, interval);
   };
+
+  // H3 fix: clean up all polling intervals on unmount
+  useEffect(() => {
+    return () => {
+      pollingIntervalsRef.current.forEach((interval) => clearInterval(interval));
+      pollingIntervalsRef.current.clear();
+    };
+  }, []);
 
   const getSourceBadge = (source: string) => {
     switch (source) {
