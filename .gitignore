@@ -1,0 +1,48 @@
+# General project ignore rules
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.dist-info/
+*.coverage
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# Environment files
+.env
+.env.*
+
+# IDE / Editor files
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artefacts
+build/
+dist/
+*.egg
+
+# Test artefacts
+.coverage
+htmlcov/
+
+# Docker related
+docker-compose.override.yml
+
+# Misc
+*.pem
