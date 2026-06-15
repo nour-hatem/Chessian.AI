@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.schemas import GameResponse, GameListResponse
 from app.services import crud
-from app.services.auth import get_current_user_id
+from app.services.auth import ensure_dev_user
 
 router = APIRouter()
 
@@ -20,9 +20,9 @@ async def list_games(
     per_page: int = Query(20, ge=1, le=100),
     source: str | None = None,
     search: str | None = None,
-    user_id: uuid.UUID = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
+    user_id = await ensure_dev_user(db)
     """List all games in the user's library with pagination and filtering."""
     games, total = await crud.list_games(
         db,
@@ -46,7 +46,7 @@ async def list_games(
                 opening_name=g.opening_name,
                 played_at=g.played_at,
                 imported_at=g.imported_at,
-                has_analysis=g.analysis is not None,
+                has_analysis=g.analysis is not None and g.analysis.status == "complete",
             )
             for g in games
         ],
@@ -57,9 +57,9 @@ async def list_games(
 @router.get("/{game_id}")
 async def get_game(
     game_id: uuid.UUID,
-    user_id: uuid.UUID = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
+    user_id = await ensure_dev_user(db)
     """Get a single game by ID."""
     game = await crud.get_game(db, game_id, user_id)
     if game is None:
@@ -76,16 +76,16 @@ async def get_game(
         opening_name=game.opening_name,
         played_at=game.played_at,
         imported_at=game.imported_at,
-        has_analysis=game.analysis is not None,
+        has_analysis=game.analysis is not None and game.analysis.status == "complete",
     )
 
 
 @router.get("/{game_id}/pgn", response_class=PlainTextResponse)
 async def get_game_pgn(
     game_id: uuid.UUID,
-    user_id: uuid.UUID = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
+    user_id = await ensure_dev_user(db)
     """Return the raw PGN text for a game."""
     game = await crud.get_game(db, game_id, user_id)
     if game is None:
