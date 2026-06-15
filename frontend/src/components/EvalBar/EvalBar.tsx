@@ -29,7 +29,8 @@ export default function EvalBar({
     }
     const evalInPawns = Math.abs(evaluation / 100);
     if (evalInPawns < 0.1) return "0.0";
-    return evalInPawns.toFixed(1);
+    const sign = evaluation > 0 ? "+" : "-";
+    return `${sign}${evalInPawns.toFixed(1)}`;
   };
 
   const isWhiteAdvantage = mate !== null ? (mate ?? 0) > 0 : evaluation >= 0;

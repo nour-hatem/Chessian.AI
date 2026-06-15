@@ -196,5 +196,3 @@ export default function ChessBoard({
     </div>
   );
 }
-
-export { ChessBoard };

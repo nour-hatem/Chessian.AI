@@ -35,6 +35,11 @@ export default function Clock({
   const lastTickRef = useRef<number>(Date.now());
   const onTimeoutRef = useRef(onTimeout);
 
+  // BUG-10 fix: reset time when initialTime changes (e.g. new game)
+  useEffect(() => {
+    setTimeLeft(initialTime);
+  }, [initialTime]);
+
   // Keep the callback ref fresh without causing effect re-runs
   useEffect(() => {
     onTimeoutRef.current = onTimeout;
