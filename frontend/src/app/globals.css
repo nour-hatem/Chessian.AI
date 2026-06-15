@@ -260,7 +260,7 @@ button {
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.4s var(--transition-base) forwards;
+  animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
 .animate-slide-up {
@@ -288,7 +288,7 @@ body::before {
   z-index: 0;
 }
 
-#__next, main {
+#app-root, main {
   position: relative;
   z-index: 1;
 }
