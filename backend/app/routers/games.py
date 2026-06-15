@@ -3,6 +3,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -77,3 +78,16 @@ async def get_game(
         imported_at=game.imported_at,
         has_analysis=game.analysis is not None,
     )
+
+
+@router.get("/{game_id}/pgn", response_class=PlainTextResponse)
+async def get_game_pgn(
+    game_id: uuid.UUID,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the raw PGN text for a game."""
+    game = await crud.get_game(db, game_id, user_id)
+    if game is None:
+        raise HTTPException(status_code=404, detail="Game not found")
+    return game.pgn
