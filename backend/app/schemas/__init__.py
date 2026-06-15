@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # ---------- Game Schemas ----------
@@ -41,7 +41,7 @@ class GameListResponse(BaseModel):
 
 class ImportRequest(BaseModel):
     username: str
-    max_games: int = 100
+    max_games: int = Field(default=100, ge=1, le=1000)
 
 
 class ImportProgress(BaseModel):
