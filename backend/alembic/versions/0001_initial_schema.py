@@ -38,7 +38,7 @@ def upgrade() -> None:
     op.create_table(
         "games",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("user_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("users.id"), nullable=False),
+        sa.Column("user_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("source", sa.String(20), nullable=False),
         sa.Column("pgn", sa.Text, nullable=False),
         sa.Column("moves_hash", sa.String(64), nullable=True),
@@ -59,7 +59,7 @@ def upgrade() -> None:
     op.create_table(
         "game_analyses",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("game_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("games.id"), unique=True, nullable=False),
+        sa.Column("game_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("games.id", ondelete="CASCADE"), unique=True, nullable=False),
         sa.Column("white_accuracy", sa.Float),
         sa.Column("black_accuracy", sa.Float),
         sa.Column("white_blunders", sa.Integer, server_default="0"),
@@ -81,7 +81,7 @@ def upgrade() -> None:
     op.create_table(
         "move_analyses",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("game_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("games.id"), nullable=False),
+        sa.Column("game_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("games.id", ondelete="CASCADE"), nullable=False),
         sa.Column("move_number", sa.Integer, nullable=False),
         sa.Column("color", sa.String(5), nullable=False),
         sa.Column("move_uci", sa.String(10)),
@@ -108,7 +108,7 @@ def upgrade() -> None:
         sa.Column(
             "move_analysis_id",
             postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("move_analyses.id"),
+            sa.ForeignKey("move_analyses.id", ondelete="CASCADE"),
             unique=True,
             nullable=False,
         ),
