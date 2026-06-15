@@ -44,8 +44,8 @@ async def import_from_lichess(
     request: ImportRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    user_id = await ensure_dev_user(db)
     """Import games from Lichess for a given username."""
+    user_id = await ensure_dev_user(db)
     games_imported = 0
     games_skipped = 0
 
@@ -104,8 +104,8 @@ async def import_from_chesscom(
     request: ImportRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    user_id = await ensure_dev_user(db)
     """Import games from Chess.com for a given username."""
+    user_id = await ensure_dev_user(db)
     games_imported = 0
     games_skipped = 0
 
@@ -164,8 +164,8 @@ async def import_from_pgn(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ):
-    user_id = await ensure_dev_user(db)
     """Import games from an uploaded PGN file."""
+    user_id = await ensure_dev_user(db)
     # Limit upload to 10MB to prevent memory exhaustion
     max_size = 10 * 1024 * 1024  # 10MB
     content = await file.read()

@@ -22,8 +22,8 @@ async def list_games(
     search: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    user_id = await ensure_dev_user(db)
     """List all games in the user's library with pagination and filtering."""
+    user_id = await ensure_dev_user(db)
     games, total = await crud.list_games(
         db,
         user_id,
@@ -59,8 +59,8 @@ async def get_game(
     game_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
 ):
-    user_id = await ensure_dev_user(db)
     """Get a single game by ID."""
+    user_id = await ensure_dev_user(db)
     game = await crud.get_game(db, game_id, user_id)
     if game is None:
         raise HTTPException(status_code=404, detail="Game not found")
@@ -85,8 +85,8 @@ async def get_game_pgn(
     game_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
 ):
-    user_id = await ensure_dev_user(db)
     """Return the raw PGN text for a game."""
+    user_id = await ensure_dev_user(db)
     game = await crud.get_game(db, game_id, user_id)
     if game is None:
         raise HTTPException(status_code=404, detail="Game not found")

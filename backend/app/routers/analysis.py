@@ -57,6 +57,9 @@ async def _run_analysis_background(game_id: uuid.UUID, pgn: str, depth: int):
                 "black_blunders": result.black_blunders,
                 "black_mistakes": result.black_mistakes,
                 "black_inaccuracies": result.black_inaccuracies,
+                "opening_accuracy": result.opening_accuracy,
+                "middlegame_accuracy": result.middlegame_accuracy,
+                "endgame_accuracy": result.endgame_accuracy,
                 "critical_moments": critical_moments,
             }
 
@@ -82,11 +85,11 @@ async def _run_analysis_background(game_id: uuid.UUID, pgn: str, depth: int):
 async def trigger_analysis(
     game_id: uuid.UUID,
     depth: int = 20,
-    background_tasks: BackgroundTasks = BackgroundTasks(),
+    background_tasks: BackgroundTasks = Depends(),
     db: AsyncSession = Depends(get_db),
 ):
-    user_id = await ensure_dev_user(db)
     """Trigger Stockfish analysis for a game."""
+    user_id = await ensure_dev_user(db)
     # Verify game exists and belongs to user
     game = await crud.get_game(db, game_id, user_id)
     if game is None:
@@ -132,8 +135,8 @@ async def get_analysis(
     game_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
 ):
-    user_id = await ensure_dev_user(db)
     """Get analysis results for a game."""
+    user_id = await ensure_dev_user(db)
     # Verify game belongs to user
     game = await crud.get_game(db, game_id, user_id)
     if game is None:
@@ -185,8 +188,8 @@ async def get_critical_moments(
     game_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
 ):
-    user_id = await ensure_dev_user(db)
     """Get critical moments for an analyzed game."""
+    user_id = await ensure_dev_user(db)
     game = await crud.get_game(db, game_id, user_id)
     if game is None:
         raise HTTPException(status_code=404, detail="Game not found")
