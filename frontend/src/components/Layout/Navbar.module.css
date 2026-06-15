@@ -83,6 +83,12 @@
   background: rgba(124, 92, 252, 0.1);
 }
 
+.navLinkDisabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+
 .navIcon {
   font-size: 1rem;
 }
