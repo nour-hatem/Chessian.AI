@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import Navbar from "@/components/Layout/Navbar";
 import styles from "./library.module.css";
 
@@ -31,6 +32,7 @@ export default function LibraryPage() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [analyzing, setAnalyzing] = useState<Set<string>>(new Set());
+  const router = useRouter();
 
   const fetchGames = useCallback(async () => {
     try {
@@ -315,7 +317,11 @@ export default function LibraryPage() {
                   </div>
                   <div className={styles.gameActions}>
                     {game.has_analysis ? (
-                      <button className="btn-secondary" id={`view-${game.id}`}>
+                      <button
+                        className="btn-secondary"
+                        id={`view-${game.id}`}
+                        onClick={() => router.push(`/analysis/${game.id}`)}
+                      >
                         📊 View Analysis
                       </button>
                     ) : analyzing.has(game.id) ? (
