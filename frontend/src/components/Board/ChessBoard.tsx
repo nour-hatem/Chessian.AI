@@ -158,6 +158,7 @@ export default function ChessBoard({
 
   // M6 fix: Sync orientation when prop changes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setBoardFlipped(orientation === "black");
   }, [orientation]);
 

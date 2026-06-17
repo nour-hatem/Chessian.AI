@@ -71,6 +71,7 @@ export default function LibraryPage() {
   }, [searchQuery]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchGames();
   }, [fetchGames]);
 
@@ -179,9 +180,10 @@ export default function LibraryPage() {
 
   // H3 fix: clean up all polling intervals on unmount
   useEffect(() => {
+    const intervals = pollingIntervalsRef.current;
     return () => {
-      pollingIntervalsRef.current.forEach((interval) => clearInterval(interval));
-      pollingIntervalsRef.current.clear();
+      intervals.forEach((interval) => clearInterval(interval));
+      intervals.clear();
     };
   }, []);
 

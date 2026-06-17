@@ -32,11 +32,12 @@ export default function Clock({
 }: ClockProps) {
   const [timeLeft, setTimeLeft] = useState(initialTime);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const lastTickRef = useRef<number>(Date.now());
+  const lastTickRef = useRef<number>(0);
   const onTimeoutRef = useRef(onTimeout);
 
   // BUG-10 fix: reset time when initialTime changes (e.g. new game)
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTimeLeft(initialTime);
   }, [initialTime]);
 
@@ -51,7 +52,7 @@ export default function Clock({
   // H2 fix: timeLeft removed from deps — timer uses refs to avoid infinite re-runs
   useEffect(() => {
     if (active) {
-      lastTickRef.current = Date.now();
+      lastTickRef.current = lastTickRef.current || Date.now();
       intervalRef.current = setInterval(() => {
         const now = Date.now();
         const elapsed = (now - lastTickRef.current) / 1000;

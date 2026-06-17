@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Chess } from "chess.js";
 import Navbar from "@/components/Layout/Navbar";
 import ChessBoard from "@/components/Board/ChessBoard";
