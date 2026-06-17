@@ -76,11 +76,8 @@ def _score_to_cp(score: chess.engine.PovScore) -> float:
     """Convert engine score to centipawns from white's perspective."""
     pov = score.white()
     if pov.is_mate():
-        mate_num = pov.mate()
-        if mate_num is None:
-            return 0.0
-        # Large values for mate scores
-        return 10000.0 if mate_num > 0 else -10000.0
+        # Large values for mate scores; correctly handles mate in 0
+        return 10000.0 if pov > chess.engine.Cp(0) else -10000.0
     cp = pov.score()
     return float(cp) if cp is not None else 0.0
 

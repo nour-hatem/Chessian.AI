@@ -158,8 +158,11 @@ def compute_moves_hash(pgn_text: str) -> str:
     if game is None:
         return hashlib.sha256(pgn_text.encode()).hexdigest()
 
+    white = game.headers.get("White", "")
+    black = game.headers.get("Black", "")
     moves_str = " ".join(str(move) for move in game.mainline_moves())
-    return hashlib.sha256(moves_str.encode()).hexdigest()
+    hash_input = f"{white}:{black}:{moves_str}"
+    return hashlib.sha256(hash_input.encode()).hexdigest()
 
 
 def _normalize_timestamp(value) -> int | float | str | None:

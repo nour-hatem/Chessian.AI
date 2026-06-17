@@ -61,23 +61,25 @@ async def import_from_lichess(
                 games_skipped += 1
                 continue
 
-            await crud.create_game(
-                db,
-                user_id=user_id,
-                source="lichess",
-                pgn=game_data["pgn"],
-                moves_hash=moves_hash,
-                white_username=game_data.get("white"),
-                black_username=game_data.get("black"),
-                result=game_data.get("result"),
-                time_control=game_data.get("time_control"),
-                opening_eco=game_data.get("opening_eco"),
-                opening_name=game_data.get("opening_name"),
-                played_at=_parse_played_at(game_data.get("played_at")),
-            )
-            games_imported += 1
-
-        await db.commit()
+            try:
+                await crud.create_game(
+                    db,
+                    user_id=user_id,
+                    source="lichess",
+                    pgn=game_data["pgn"],
+                    moves_hash=moves_hash,
+                    white_username=game_data.get("white"),
+                    black_username=game_data.get("black"),
+                    result=game_data.get("result"),
+                    time_control=game_data.get("time_control"),
+                    opening_eco=game_data.get("opening_eco"),
+                    opening_name=game_data.get("opening_name"),
+                    played_at=_parse_played_at(game_data.get("played_at")),
+                )
+                await db.commit()
+                games_imported += 1
+            except Exception:
+                await db.rollback()
 
         msg = f"Successfully imported {games_imported} games from Lichess"
         if games_skipped:
@@ -121,23 +123,25 @@ async def import_from_chesscom(
                 games_skipped += 1
                 continue
 
-            await crud.create_game(
-                db,
-                user_id=user_id,
-                source="chesscom",
-                pgn=game_data["pgn"],
-                moves_hash=moves_hash,
-                white_username=game_data.get("white"),
-                black_username=game_data.get("black"),
-                result=game_data.get("result"),
-                time_control=game_data.get("time_control"),
-                opening_eco=game_data.get("opening_eco"),
-                opening_name=game_data.get("opening_name"),
-                played_at=_parse_played_at(game_data.get("played_at")),
-            )
-            games_imported += 1
-
-        await db.commit()
+            try:
+                await crud.create_game(
+                    db,
+                    user_id=user_id,
+                    source="chesscom",
+                    pgn=game_data["pgn"],
+                    moves_hash=moves_hash,
+                    white_username=game_data.get("white"),
+                    black_username=game_data.get("black"),
+                    result=game_data.get("result"),
+                    time_control=game_data.get("time_control"),
+                    opening_eco=game_data.get("opening_eco"),
+                    opening_name=game_data.get("opening_name"),
+                    played_at=_parse_played_at(game_data.get("played_at")),
+                )
+                await db.commit()
+                games_imported += 1
+            except Exception:
+                await db.rollback()
 
         msg = f"Successfully imported {games_imported} games from Chess.com"
         if games_skipped:
@@ -202,23 +206,25 @@ async def import_from_pgn(
             games_skipped += 1
             continue
 
-        await crud.create_game(
-            db,
-            user_id=user_id,
-            source="pgn_upload",
-            pgn=game_data["pgn"],
-            moves_hash=moves_hash,
-            white_username=game_data.get("white"),
-            black_username=game_data.get("black"),
-            result=game_data.get("result"),
-            time_control=game_data.get("time_control"),
-            opening_eco=game_data.get("opening_eco"),
-            opening_name=game_data.get("opening_name"),
-            played_at=_parse_played_at(game_data.get("played_at")),
-        )
-        games_imported += 1
-
-    await db.commit()
+        try:
+            await crud.create_game(
+                db,
+                user_id=user_id,
+                source="pgn_upload",
+                pgn=game_data["pgn"],
+                moves_hash=moves_hash,
+                white_username=game_data.get("white"),
+                black_username=game_data.get("black"),
+                result=game_data.get("result"),
+                time_control=game_data.get("time_control"),
+                opening_eco=game_data.get("opening_eco"),
+                opening_name=game_data.get("opening_name"),
+                played_at=_parse_played_at(game_data.get("played_at")),
+            )
+            await db.commit()
+            games_imported += 1
+        except Exception:
+            await db.rollback()
 
     msg = f"Successfully imported {games_imported} game(s) from PGN file"
     if games_skipped:

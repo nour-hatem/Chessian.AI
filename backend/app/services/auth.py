@@ -35,6 +35,6 @@ async def ensure_dev_user(db: AsyncSession) -> uuid.UUID:
         .on_conflict_do_nothing(index_elements=["id"])
     )
     await db.execute(stmt)
-    await db.flush()
+    await db.commit()
 
     return DEV_USER_ID
