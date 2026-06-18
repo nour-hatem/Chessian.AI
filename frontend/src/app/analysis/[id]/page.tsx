@@ -437,6 +437,53 @@ export default function AnalysisPage() {
               </div>
             </div>
 
+            {/* Phase-Separated Accuracy (B6) */}
+            {(analysis.opening_accuracy != null ||
+              analysis.middlegame_accuracy != null ||
+              analysis.endgame_accuracy != null) && (
+              <div className={styles.phaseAccuracy} id="phase-accuracy-panel">
+                <div className={styles.phaseAccuracyTitle}>Phase Accuracy</div>
+                {[
+                  { label: "Opening", value: analysis.opening_accuracy, icon: "📖", phase: "opening" },
+                  { label: "Middlegame", value: analysis.middlegame_accuracy, icon: "⚔️", phase: "middlegame" },
+                  { label: "Endgame", value: analysis.endgame_accuracy, icon: "👑", phase: "endgame" },
+                ].map(
+                  (phase) =>
+                    phase.value != null && (
+                      <div key={phase.phase} className={styles.phaseRow} id={`phase-${phase.phase}`}>
+                        <div className={styles.phaseHeader}>
+                          <span className={styles.phaseIcon}>{phase.icon}</span>
+                          <span className={styles.phaseLabel}>{phase.label}</span>
+                          <span
+                            className={`${styles.phaseValue} ${
+                              phase.value >= 80
+                                ? styles.phaseExcellent
+                                : phase.value >= 60
+                                ? styles.phaseGood
+                                : styles.phaseWeak
+                            }`}
+                          >
+                            {phase.value.toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className={styles.phaseBarTrack}>
+                          <div
+                            className={`${styles.phaseBarFill} ${
+                              phase.value >= 80
+                                ? styles.phaseBarExcellent
+                                : phase.value >= 60
+                                ? styles.phaseBarGood
+                                : styles.phaseBarWeak
+                            }`}
+                            style={{ width: `${Math.min(100, phase.value)}%` }}
+                          />
+                        </div>
+                      </div>
+                    )
+                )}
+              </div>
+            )}
+
             {/* Error Summary */}
             <div className={styles.errorSummary}>
               <div className={styles.errorSummaryTitle}>Move Classification</div>

@@ -254,6 +254,90 @@
   color: var(--text-secondary);
 }
 
+/* ---------- Phase Accuracy ---------- */
+.phaseAccuracy {
+  background: var(--bg-glass);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+}
+
+.phaseAccuracyTitle {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-sm);
+}
+
+.phaseRow {
+  padding: var(--space-sm) 0;
+}
+
+.phaseRow + .phaseRow {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.phaseHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-bottom: 6px;
+}
+
+.phaseIcon {
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.phaseLabel {
+  flex: 1;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.phaseValue {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.phaseExcellent { color: #66bb6a; }
+.phaseGood { color: #ffd54f; }
+.phaseWeak { color: #ef5350; }
+
+.phaseBarTrack {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.phaseBarFill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.phaseBarExcellent {
+  background: linear-gradient(90deg, #43a047, #66bb6a);
+  box-shadow: 0 0 8px rgba(102, 187, 106, 0.3);
+}
+
+.phaseBarGood {
+  background: linear-gradient(90deg, #f9a825, #ffd54f);
+  box-shadow: 0 0 8px rgba(255, 213, 79, 0.3);
+}
+
+.phaseBarWeak {
+  background: linear-gradient(90deg, #e53935, #ef5350);
+  box-shadow: 0 0 8px rgba(239, 83, 80, 0.3);
+}
+
 /* ---------- Critical Moments ---------- */
 .criticalMoments {
   background: var(--bg-glass);
