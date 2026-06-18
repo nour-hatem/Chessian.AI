@@ -26,6 +26,8 @@ class MoveEval:
     cp_loss: float
     classification: str
     is_critical_moment: bool = False
+    clock_time: float | None = None   # remaining clock time in seconds
+    time_spent: float | None = None   # seconds spent on this move
 
 
 @dataclass
@@ -101,11 +103,19 @@ async def analyze_game(
     result = GameEvalResult()
     board = game.board()
 
+    # Pre-extract clock times from PGN nodes for time usage analysis (B7)
+    clock_times: list[float | None] = []
+    for node in game.mainline():
+        clk = node.clock()
+        clock_times.append(clk)
+
     transport, engine = await chess.engine.popen_uci(stockfish_path)
 
     try:
         white_cp_losses: list[float] = []
         black_cp_losses: list[float] = []
+        white_prev_clock: float | None = None
+        black_prev_clock: float | None = None
 
         # Evaluate the starting position once — this gives us eval + best move
         prev_info = await engine.analyse(board, chess.engine.Limit(depth=depth))
@@ -145,6 +155,20 @@ async def analyze_game(
             is_best = best_move is not None and move == best_move
             classification = classify_move(cp_loss, is_best_move=is_best)
 
+            # B7: extract clock time and compute time spent
+            move_idx = len(result.moves)
+            clk = clock_times[move_idx] if move_idx < len(clock_times) else None
+            time_spent: float | None = None
+            if clk is not None:
+                if color == "white":
+                    if white_prev_clock is not None:
+                        time_spent = max(0.0, white_prev_clock - clk)
+                    white_prev_clock = clk
+                else:
+                    if black_prev_clock is not None:
+                        time_spent = max(0.0, black_prev_clock - clk)
+                    black_prev_clock = clk
+
             move_eval = MoveEval(
                 move_number=move_number,
                 color=color,
@@ -159,6 +183,8 @@ async def analyze_game(
                 best_line=best_line,
                 cp_loss=cp_loss,
                 classification=classification,
+                clock_time=clk,
+                time_spent=time_spent,
             )
             result.moves.append(move_eval)
 

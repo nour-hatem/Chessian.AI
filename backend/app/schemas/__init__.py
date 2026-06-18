@@ -68,6 +68,7 @@ class MoveAnalysisResponse(BaseModel):
     best_move_san: Optional[str] = None
     is_critical_moment: bool = False
     explanation: Optional[str] = None
+    time_spent: Optional[float] = None
 
     model_config = {"from_attributes": True}
 

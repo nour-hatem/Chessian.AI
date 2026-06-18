@@ -25,6 +25,7 @@ interface MoveAnalysis {
   best_move_san: string | null;
   is_critical_moment: boolean;
   explanation: string | null;
+  time_spent: number | null;
 }
 
 interface GameAnalysis {
@@ -603,6 +604,23 @@ export default function AnalysisPage() {
                       <span className={styles.moveDetailValue}>
                         {currentMoveDetail.eval_after > 0 ? "+" : ""}
                         {(currentMoveDetail.eval_after / 100).toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                  {currentMoveDetail.time_spent != null && (
+                    <div className={styles.moveDetailRow}>
+                      <span className={styles.moveDetailLabel}>⏱ Time Spent</span>
+                      <span className={`${styles.moveDetailValue} ${
+                        currentMoveDetail.time_spent > 60
+                          ? styles.timeHigh
+                          : currentMoveDetail.time_spent < 3
+                          ? styles.timeLow
+                          : ""
+                      }`}>
+                        {currentMoveDetail.time_spent >= 60
+                          ? `${Math.floor(currentMoveDetail.time_spent / 60)}m ${Math.round(currentMoveDetail.time_spent % 60)}s`
+                          : `${currentMoveDetail.time_spent.toFixed(1)}s`
+                        }
                       </span>
                     </div>
                   )}

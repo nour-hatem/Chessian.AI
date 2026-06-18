@@ -467,6 +467,15 @@
 .classBrilliant { background: rgba(38, 198, 218, 0.15); color: #26c6da; }
 .classGreat { background: rgba(102, 187, 106, 0.15); color: #66bb6a; }
 
+/* ---------- Time Usage Indicators ---------- */
+.timeHigh {
+  color: #ffd54f !important;
+}
+
+.timeLow {
+  color: #ef5350 !important;
+}
+
 /* ---------- Pending State ---------- */
 .pendingState {
   display: flex;

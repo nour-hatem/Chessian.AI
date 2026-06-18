@@ -161,6 +161,7 @@ async def get_analysis(
                 classification=m.classification,
                 best_move_san=m.best_move_san,
                 is_critical_moment=m.is_critical_moment,
+                time_spent=m.time_spent,
             )
             for m in move_rows
         ]
