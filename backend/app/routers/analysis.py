@@ -13,6 +13,7 @@ from app.schemas import GameAnalysisResponse, MoveAnalysisResponse
 from app.services import crud
 from app.services.auth import ensure_dev_user
 from app.services.analyzer import analyze_game
+from app.services.explainer import explain_move
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -68,6 +69,36 @@ async def _run_analysis_background(game_id: uuid.UUID, pgn: str, depth: int):
             await crud.save_analysis_results(db, game_id, analysis_data, move_evals)
             await db.commit()
 
+            if settings.groq_api_key:
+                move_rows = await crud.get_move_analyses(db, game_id)
+                for row in move_rows:
+                    if not row.is_critical_moment:
+                        continue
+                    if row.move_number <= 20:
+                        game_phase = "opening"
+                    elif row.move_number <= 60:
+                        game_phase = "middlegame"
+                    else:
+                        game_phase = "endgame"
+                    explanation = await explain_move(
+                        move_san=row.move_san or "",
+                        best_move_san=row.best_move_san or "",
+                        cp_loss=row.cp_loss or 0.0,
+                        classification=row.classification or "",
+                        eval_before=row.eval_before or 0.0,
+                        eval_after=row.eval_after or 0.0,
+                        fen_before=row.fen_before or "",
+                        game_phase=game_phase,
+                        groq_api_key=settings.groq_api_key,
+                    )
+                    if explanation:
+                        await crud.save_move_explanation(
+                            db, row.id, explanation, "llama-3.1-8b-instant"
+                        )
+                await db.commit()
+            else:
+                logger.warning("GROQ_API_KEY not set — skipping explanation generation")
+
         except Exception as e:
             # C1 fix: rollback the broken transaction before recovery query
             await db.rollback()
@@ -84,8 +115,8 @@ async def _run_analysis_background(game_id: uuid.UUID, pgn: str, depth: int):
 @router.post("/{game_id}")
 async def trigger_analysis(
     game_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     depth: int = 20,
-    background_tasks: BackgroundTasks = Depends(),
     db: AsyncSession = Depends(get_db),
 ):
     """Trigger Stockfish analysis for a game."""
@@ -150,6 +181,7 @@ async def get_analysis(
     moves = []
     if analysis.status == "complete":
         move_rows = await crud.get_move_analyses(db, game_id)
+        explanations = await crud.get_explanations_for_game(db, game_id)
         moves = [
             MoveAnalysisResponse(
                 move_number=m.move_number,
@@ -162,6 +194,7 @@ async def get_analysis(
                 best_move_san=m.best_move_san,
                 is_critical_moment=m.is_critical_moment,
                 time_spent=m.time_spent,
+                explanation=explanations.get(m.id),
             )
             for m in move_rows
         ]

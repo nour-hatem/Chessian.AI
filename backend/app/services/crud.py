@@ -4,10 +4,11 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import select, func, or_, case, delete
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Game, GameAnalysis, MoveAnalysis
+from app.models import Game, GameAnalysis, MoveAnalysis, MoveExplanation
 
 
 # ---------- Games ----------
@@ -244,3 +245,56 @@ async def save_analysis_results(
 
     await db.flush()
     return analysis
+
+
+# ---------- Explanations ----------
+
+async def save_move_explanation(
+    db: AsyncSession,
+    move_analysis_id: uuid.UUID,
+    explanation: str,
+    model_used: str,
+) -> MoveExplanation:
+    """
+    Persist an LLM-generated explanation for a single move.
+
+    If an explanation already exists for this move_analysis_id (unique
+    constraint violation), the existing record is returned unchanged.
+    """
+    record = MoveExplanation(
+        id=uuid.uuid4(),
+        move_analysis_id=move_analysis_id,
+        explanation=explanation,
+        model_used=model_used,
+    )
+    try:
+        db.add(record)
+        await db.flush()
+        return record
+    except IntegrityError:
+        # Duplicate — roll back the failed flush and return the existing row
+        await db.rollback()
+        stmt = select(MoveExplanation).where(
+            MoveExplanation.move_analysis_id == move_analysis_id
+        )
+        result = await db.execute(stmt)
+        return result.scalar_one()
+
+
+async def get_explanations_for_game(
+    db: AsyncSession,
+    game_id: uuid.UUID,
+) -> dict[uuid.UUID, str]:
+    """
+    Return all LLM explanations for a game as {move_analysis_id: explanation_text}.
+
+    Joins MoveExplanation → MoveAnalysis filtered by game_id.
+    """
+    stmt = (
+        select(MoveExplanation)
+        .join(MoveAnalysis, MoveExplanation.move_analysis_id == MoveAnalysis.id)
+        .where(MoveAnalysis.game_id == game_id)
+    )
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+    return {row.move_analysis_id: row.explanation for row in rows}
