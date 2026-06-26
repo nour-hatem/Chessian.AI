@@ -548,6 +548,9 @@ export default function AnalysisPage() {
                           {m.move_number}. {m.color === "black" ? "..." : ""}{m.move_san}
                         </div>
                         <div className={styles.criticalClass}>{m.classification}</div>
+                        {m.explanation && (
+                          <p className="text-sm text-blue-400 mt-1 italic">{m.explanation}</p>
+                        )}
                       </div>
                       <span className={styles.criticalCpLoss}>
                         {m.cp_loss != null ? `-${Math.round(m.cp_loss)}cp` : ""}
@@ -605,6 +608,14 @@ export default function AnalysisPage() {
                         {currentMoveDetail.eval_after > 0 ? "+" : ""}
                         {(currentMoveDetail.eval_after / 100).toFixed(2)}
                       </span>
+                    </div>
+                  )}
+                  {currentMoveDetail.explanation && (
+                    <div className={styles.moveDetailRow} style={{flexDirection: "column", alignItems: "flex-start", gap: "0.25rem"}}>
+                      <span className={styles.moveDetailLabel}>Coach Explanation</span>
+                      <p className="text-sm text-blue-400 italic">
+                        {currentMoveDetail.explanation}
+                      </p>
                     </div>
                   )}
                   {currentMoveDetail.time_spent != null && (
