@@ -47,3 +47,5 @@ docker-compose.override.yml
 
 # Misc
 *.pem
+*.pgn
+pgdata/
