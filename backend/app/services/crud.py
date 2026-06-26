@@ -305,6 +305,7 @@ async def get_explanations_for_game(
 async def get_opening_repertoire(
     db: AsyncSession,
     user_id: uuid.UUID,
+    user_username: str,
 ) -> list[dict]:
     """
     Aggregate per-opening stats across all analyzed games for a user.
@@ -314,6 +315,11 @@ async def get_opening_repertoire(
     Returns raw result counts (result_1_0, result_0_1, result_draw)
     rather than win/loss since we don't track which color the user played.
     """
+    user_accuracy_expr = case(
+        (Game.white_username == user_username, GameAnalysis.white_accuracy),
+        else_=GameAnalysis.black_accuracy
+    )
+
     stmt = (
         select(
             Game.opening_eco,
@@ -330,8 +336,7 @@ async def get_opening_repertoire(
                 case((Game.result == "1/2-1/2", 1), else_=0)
             ).label("result_draw"),
             # Accuracy averages
-            func.avg(GameAnalysis.white_accuracy).label("avg_white_accuracy"),
-            func.avg(GameAnalysis.black_accuracy).label("avg_black_accuracy"),
+            func.avg(user_accuracy_expr).label("avg_user_accuracy"),
         )
         .join(GameAnalysis, Game.id == GameAnalysis.game_id)
         .where(
@@ -352,8 +357,7 @@ async def get_opening_repertoire(
         r1_0 = int(row.result_1_0 or 0)
         r0_1 = int(row.result_0_1 or 0)
         rdraw = int(row.result_draw or 0)
-        avg_w = round(float(row.avg_white_accuracy), 1) if row.avg_white_accuracy is not None else None
-        avg_b = round(float(row.avg_black_accuracy), 1) if row.avg_black_accuracy is not None else None
+        avg_user = round(float(row.avg_user_accuracy), 1) if row.avg_user_accuracy is not None else None
 
         openings.append({
             "eco": row.opening_eco or "",
@@ -362,8 +366,7 @@ async def get_opening_repertoire(
             "result_1_0": r1_0,
             "result_0_1": r0_1,
             "result_draw": rdraw,
-            "avg_white_accuracy": avg_w,
-            "avg_black_accuracy": avg_b,
+            "avg_user_accuracy": avg_user,
         })
 
     return openings

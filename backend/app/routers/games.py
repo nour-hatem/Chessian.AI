@@ -62,8 +62,17 @@ async def get_opening_repertoire(
     Returns one entry per opening (ECO + name) that appears in at least
     3 analyzed games, with result counts and average accuracies.
     """
+    from sqlalchemy import select
+    from app.models import User
     user_id = await ensure_dev_user(db)
-    data = await crud.get_opening_repertoire(db, user_id)
+    user_obj = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    
+    # Fallback to nourelhashash for dev if platform usernames aren't set
+    username = "nourelhashash"
+    if user_obj:
+        username = user_obj.chesscom_username or user_obj.lichess_username or "nourelhashash"
+    
+    data = await crud.get_opening_repertoire(db, user_id, username)
     return {"openings": data, "total": len(data)}
 
 

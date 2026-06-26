@@ -218,8 +218,17 @@ def _extract_pgn_headers(pgn_text: str) -> dict:
     pgn_io = io.StringIO(pgn_text)
     game = chess.pgn.read_game(pgn_io)
     if game:
+        opening = game.headers.get("Opening", "")
+        if not opening:
+            eco_url = game.headers.get("ECOUrl", "")
+            if eco_url:
+                parts = eco_url.split("/openings/")
+                if len(parts) > 1:
+                    raw_name = parts[-1]
+                    opening = raw_name.replace("-", " ")
         return {
             "eco": game.headers.get("ECO", ""),
-            "opening": game.headers.get("Opening", ""),
+            "opening": opening,
         }
     return {"eco": "", "opening": ""}
+
