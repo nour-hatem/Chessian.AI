@@ -298,3 +298,72 @@ async def get_explanations_for_game(
     result = await db.execute(stmt)
     rows = result.scalars().all()
     return {row.move_analysis_id: row.explanation for row in rows}
+
+
+# ---------- Opening Profiler ----------
+
+async def get_opening_repertoire(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+) -> list[dict]:
+    """
+    Aggregate per-opening stats across all analyzed games for a user.
+
+    Joins Game -> GameAnalysis, groups by ECO + opening name.
+    Only returns openings with >= 3 games.
+    Returns raw result counts (result_1_0, result_0_1, result_draw)
+    rather than win/loss since we don't track which color the user played.
+    """
+    stmt = (
+        select(
+            Game.opening_eco,
+            Game.opening_name,
+            func.count().label("games_played"),
+            # Result counts
+            func.sum(
+                case((Game.result == "1-0", 1), else_=0)
+            ).label("result_1_0"),
+            func.sum(
+                case((Game.result == "0-1", 1), else_=0)
+            ).label("result_0_1"),
+            func.sum(
+                case((Game.result == "1/2-1/2", 1), else_=0)
+            ).label("result_draw"),
+            # Accuracy averages
+            func.avg(GameAnalysis.white_accuracy).label("avg_white_accuracy"),
+            func.avg(GameAnalysis.black_accuracy).label("avg_black_accuracy"),
+        )
+        .join(GameAnalysis, Game.id == GameAnalysis.game_id)
+        .where(
+            Game.user_id == user_id,
+            GameAnalysis.status == "complete",
+        )
+        .group_by(Game.opening_eco, Game.opening_name)
+        .having(func.count() >= 3)
+        .order_by(func.count().desc())
+    )
+
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    openings = []
+    for row in rows:
+        games = row.games_played or 0
+        r1_0 = int(row.result_1_0 or 0)
+        r0_1 = int(row.result_0_1 or 0)
+        rdraw = int(row.result_draw or 0)
+        avg_w = round(float(row.avg_white_accuracy), 1) if row.avg_white_accuracy is not None else None
+        avg_b = round(float(row.avg_black_accuracy), 1) if row.avg_black_accuracy is not None else None
+
+        openings.append({
+            "eco": row.opening_eco or "",
+            "name": row.opening_name or "Unknown",
+            "games_played": games,
+            "result_1_0": r1_0,
+            "result_0_1": r0_1,
+            "result_draw": rdraw,
+            "avg_white_accuracy": avg_w,
+            "avg_black_accuracy": avg_b,
+        })
+
+    return openings

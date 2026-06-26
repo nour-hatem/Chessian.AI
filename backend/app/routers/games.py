@@ -53,6 +53,19 @@ async def list_games(
         total=total,
     )
 
+@router.get("/openings/repertoire")
+async def get_opening_repertoire(
+    db: AsyncSession = Depends(get_db),
+):
+    """Get opening repertoire stats aggregated across all analyzed games.
+
+    Returns one entry per opening (ECO + name) that appears in at least
+    3 analyzed games, with result counts and average accuracies.
+    """
+    user_id = await ensure_dev_user(db)
+    data = await crud.get_opening_repertoire(db, user_id)
+    return {"openings": data, "total": len(data)}
+
 
 @router.get("/{game_id}")
 async def get_game(
