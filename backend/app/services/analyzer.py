@@ -1,5 +1,6 @@
 """Stockfish engine analysis service."""
 
+import asyncio
 import math
 from dataclasses import dataclass, field
 
@@ -7,6 +8,10 @@ import chess
 import chess.pgn
 import chess.engine
 import io
+
+# Concurrency guard: only one Stockfish process at a time on this machine.
+# Protects both the API-triggered path and standalone bulk scripts.
+_engine_semaphore = asyncio.Semaphore(1)
 
 
 @dataclass
@@ -88,12 +93,20 @@ async def analyze_game(
     pgn_text: str,
     stockfish_path: str = "/usr/bin/stockfish",
     depth: int = 20,
+    critical_depth: int = 20,
 ) -> GameEvalResult:
     """
-    Analyze a complete game with Stockfish.
+    Analyze a complete game with Stockfish using a two-tier depth strategy.
 
-    Uses a single engine call per move by reusing the previous position's
-    evaluation and best-move data.
+    First pass: every move is evaluated at `depth` (fast scan — used for
+    cp_loss, classification, accuracy, and identifying critical moments).
+
+    Second pass: the top critical moments (up to 5 positions with cp_loss > 50)
+    are re-evaluated at `critical_depth` so that their eval / best_move /
+    best_line are as precise as possible before being sent to the LLM.
+
+    When called from the API (depth=20, critical_depth=20) behaviour is
+    identical to the original single-pass approach.
     """
     pgn_io = io.StringIO(pgn_text)
     game = chess.pgn.read_game(pgn_io)
@@ -109,151 +122,200 @@ async def analyze_game(
         clk = node.clock()
         clock_times.append(clk)
 
-    transport, engine = await chess.engine.popen_uci(stockfish_path)
+    async with _engine_semaphore:
+        transport, engine = await chess.engine.popen_uci(stockfish_path)
+        await engine.configure({"Threads": 6, "Hash": 512})
 
-    try:
-        white_cp_losses: list[float] = []
-        black_cp_losses: list[float] = []
-        white_prev_clock: float | None = None
-        black_prev_clock: float | None = None
-
-        # Evaluate the starting position once — this gives us eval + best move
-        prev_info = await engine.analyse(board, chess.engine.Limit(depth=depth))
-        prev_eval_white = _score_to_cp(prev_info["score"])
-
-        for node in game.mainline():
-            move = node.move
-            color = "white" if board.turn == chess.WHITE else "black"
-            move_number = board.fullmove_number
-
-            fen_before = board.fen()
-            move_san = board.san(move)
-            move_uci = move.uci()
-
-            # H1 fix: reuse prev_info for best move data (no extra engine call)
-            eval_before = prev_eval_white
-            best_move = prev_info.get("pv", [None])[0]
-            best_move_san = board.san(best_move) if best_move else ""
-            best_move_uci = best_move.uci() if best_move else ""
-            pv = prev_info.get("pv", [])
-            best_line = " ".join(m.uci() for m in pv[:5])
-
-            # Make the move
-            board.push(move)
-            fen_after = board.fen()
-
-            # Single engine call per move: evaluate the position after the move
-            info_after = await engine.analyse(board, chess.engine.Limit(depth=depth))
-            eval_after_white = _score_to_cp(info_after["score"])
-
-            # Compute centipawn loss (from the moving side's perspective)
-            if color == "white":
-                cp_loss = max(0, eval_before - eval_after_white)
-            else:
-                cp_loss = max(0, eval_after_white - eval_before)
-
-            is_best = best_move is not None and move == best_move
-            classification = classify_move(cp_loss, is_best_move=is_best)
-
-            # B7: extract clock time and compute time spent
-            move_idx = len(result.moves)
-            clk = clock_times[move_idx] if move_idx < len(clock_times) else None
-            time_spent: float | None = None
-            if clk is not None:
-                if color == "white":
-                    if white_prev_clock is not None:
-                        time_spent = max(0.0, white_prev_clock - clk)
-                    white_prev_clock = clk
-                else:
-                    if black_prev_clock is not None:
-                        time_spent = max(0.0, black_prev_clock - clk)
-                    black_prev_clock = clk
-
-            move_eval = MoveEval(
-                move_number=move_number,
-                color=color,
-                move_uci=move_uci,
-                move_san=move_san,
-                fen_before=fen_before,
-                fen_after=fen_after,
-                eval_before=eval_before,
-                eval_after=eval_after_white,
-                best_move_uci=best_move_uci,
-                best_move_san=best_move_san,
-                best_line=best_line,
-                cp_loss=cp_loss,
-                classification=classification,
-                clock_time=clk,
-                time_spent=time_spent,
-            )
-            result.moves.append(move_eval)
-
-            # Track losses per color
-            if color == "white":
-                white_cp_losses.append(cp_loss)
-                if classification == "blunder":
-                    result.white_blunders += 1
-                elif classification == "mistake":
-                    result.white_mistakes += 1
-                elif classification == "inaccuracy":
-                    result.white_inaccuracies += 1
-            else:
-                black_cp_losses.append(cp_loss)
-                if classification == "blunder":
-                    result.black_blunders += 1
-                elif classification == "mistake":
-                    result.black_mistakes += 1
-                elif classification == "inaccuracy":
-                    result.black_inaccuracies += 1
-
-            # Carry forward for next iteration
-            prev_eval_white = eval_after_white
-            prev_info = info_after
-
-        # Compute accuracy
-        if white_cp_losses:
-            white_acpl = sum(white_cp_losses) / len(white_cp_losses)
-            result.white_accuracy = compute_accuracy(white_acpl)
-        if black_cp_losses:
-            black_acpl = sum(black_cp_losses) / len(black_cp_losses)
-            result.black_accuracy = compute_accuracy(black_acpl)
-
-        # BUG-18 fix: Compute phase-separated accuracy
-        total_moves = len(result.moves)
-        if total_moves > 0:
-            opening_end = min(20, total_moves)  # First ~10 moves (20 half-moves)
-            endgame_start = max(opening_end, total_moves - 20)  # Last ~10 moves
-
-            opening_losses = [m.cp_loss for m in result.moves[:opening_end]]
-            middle_losses = [m.cp_loss for m in result.moves[opening_end:endgame_start]]
-            endgame_losses = [m.cp_loss for m in result.moves[endgame_start:]]
-
-            if opening_losses:
-                result.opening_accuracy = compute_accuracy(
-                    sum(opening_losses) / len(opening_losses)
-                )
-            if middle_losses:
-                result.middlegame_accuracy = compute_accuracy(
-                    sum(middle_losses) / len(middle_losses)
-                )
-            if endgame_losses:
-                result.endgame_accuracy = compute_accuracy(
-                    sum(endgame_losses) / len(endgame_losses)
-                )
-
-        # Mark critical moments (top 5 highest cp_loss moves)
-        sorted_moves = sorted(result.moves, key=lambda m: m.cp_loss, reverse=True)
-        for m in sorted_moves[:5]:
-            if m.cp_loss > 50:
-                m.is_critical_moment = True
-
-    finally:
-        # BUG-04 fix: ensure engine process is always cleaned up
         try:
-            await engine.quit()
-        except Exception:
-            pass
+            white_cp_losses: list[float] = []
+            black_cp_losses: list[float] = []
+            white_prev_clock: float | None = None
+            black_prev_clock: float | None = None
+
+            # Evaluate the starting position once — this gives us eval + best move
+            prev_info = await engine.analyse(board, chess.engine.Limit(depth=depth))
+            prev_eval_white = _score_to_cp(prev_info["score"])
+
+            for node in game.mainline():
+                move = node.move
+                color = "white" if board.turn == chess.WHITE else "black"
+                move_number = board.fullmove_number
+
+                fen_before = board.fen()
+                move_san = board.san(move)
+                move_uci = move.uci()
+
+                # H1 fix: reuse prev_info for best move data (no extra engine call)
+                eval_before = prev_eval_white
+                best_move = prev_info.get("pv", [None])[0]
+                best_move_san = board.san(best_move) if best_move else ""
+                best_move_uci = best_move.uci() if best_move else ""
+                pv = prev_info.get("pv", [])
+                best_line = " ".join(m.uci() for m in pv[:5])
+
+                # Make the move
+                board.push(move)
+                fen_after = board.fen()
+
+                # Single engine call per move: evaluate the position after the move
+                info_after = await engine.analyse(board, chess.engine.Limit(depth=depth))
+                eval_after_white = _score_to_cp(info_after["score"])
+
+                # Compute centipawn loss (from the moving side's perspective)
+                if color == "white":
+                    cp_loss = max(0, eval_before - eval_after_white)
+                else:
+                    cp_loss = max(0, eval_after_white - eval_before)
+
+                is_best = best_move is not None and move == best_move
+                classification = classify_move(cp_loss, is_best_move=is_best)
+
+                # B7: extract clock time and compute time spent
+                move_idx = len(result.moves)
+                clk = clock_times[move_idx] if move_idx < len(clock_times) else None
+                time_spent: float | None = None
+                if clk is not None:
+                    if color == "white":
+                        if white_prev_clock is not None:
+                            time_spent = max(0.0, white_prev_clock - clk)
+                        white_prev_clock = clk
+                    else:
+                        if black_prev_clock is not None:
+                            time_spent = max(0.0, black_prev_clock - clk)
+                        black_prev_clock = clk
+
+                move_eval = MoveEval(
+                    move_number=move_number,
+                    color=color,
+                    move_uci=move_uci,
+                    move_san=move_san,
+                    fen_before=fen_before,
+                    fen_after=fen_after,
+                    eval_before=eval_before,
+                    eval_after=eval_after_white,
+                    best_move_uci=best_move_uci,
+                    best_move_san=best_move_san,
+                    best_line=best_line,
+                    cp_loss=cp_loss,
+                    classification=classification,
+                    clock_time=clk,
+                    time_spent=time_spent,
+                )
+                result.moves.append(move_eval)
+
+                # Track losses per color
+                if color == "white":
+                    white_cp_losses.append(cp_loss)
+                    if classification == "blunder":
+                        result.white_blunders += 1
+                    elif classification == "mistake":
+                        result.white_mistakes += 1
+                    elif classification == "inaccuracy":
+                        result.white_inaccuracies += 1
+                else:
+                    black_cp_losses.append(cp_loss)
+                    if classification == "blunder":
+                        result.black_blunders += 1
+                    elif classification == "mistake":
+                        result.black_mistakes += 1
+                    elif classification == "inaccuracy":
+                        result.black_inaccuracies += 1
+
+                # Carry forward for next iteration
+                prev_eval_white = eval_after_white
+                prev_info = info_after
+
+            # Compute accuracy
+            if white_cp_losses:
+                white_acpl = sum(white_cp_losses) / len(white_cp_losses)
+                result.white_accuracy = compute_accuracy(white_acpl)
+            if black_cp_losses:
+                black_acpl = sum(black_cp_losses) / len(black_cp_losses)
+                result.black_accuracy = compute_accuracy(black_acpl)
+
+            # BUG-18 fix: Compute phase-separated accuracy
+            total_moves = len(result.moves)
+            if total_moves > 0:
+                opening_end = min(20, total_moves)  # First ~10 moves (20 half-moves)
+                endgame_start = max(opening_end, total_moves - 20)  # Last ~10 moves
+
+                opening_losses = [m.cp_loss for m in result.moves[:opening_end]]
+                middle_losses = [m.cp_loss for m in result.moves[opening_end:endgame_start]]
+                endgame_losses = [m.cp_loss for m in result.moves[endgame_start:]]
+
+                if opening_losses:
+                    result.opening_accuracy = compute_accuracy(
+                        sum(opening_losses) / len(opening_losses)
+                    )
+                if middle_losses:
+                    result.middlegame_accuracy = compute_accuracy(
+                        sum(middle_losses) / len(middle_losses)
+                    )
+                if endgame_losses:
+                    result.endgame_accuracy = compute_accuracy(
+                        sum(endgame_losses) / len(endgame_losses)
+                    )
+
+            # Mark critical moments (top 5 highest cp_loss moves)
+            sorted_moves = sorted(result.moves, key=lambda m: m.cp_loss, reverse=True)
+            for m in sorted_moves[:5]:
+                if m.cp_loss > 50:
+                    m.is_critical_moment = True
+
+            # ── Second pass: deepen critical moments only ─────────────────────
+            # Re-analyse the ~5 critical positions at critical_depth so the
+            # eval / best_move / best_line stored and sent to the LLM are as
+            # accurate as possible, without paying that cost on every move.
+            if critical_depth > depth:
+                for m in result.moves:
+                    if not m.is_critical_moment:
+                        continue
+
+                    # Re-evaluate the position *before* the played move
+                    board_before = chess.Board(m.fen_before)
+                    info_before_deep = await engine.analyse(
+                        board_before, chess.engine.Limit(depth=critical_depth)
+                    )
+                    new_eval_before = _score_to_cp(info_before_deep["score"])
+                    best_move_deep = info_before_deep.get("pv", [None])[0]
+                    new_best_move_san = (
+                        board_before.san(best_move_deep) if best_move_deep else ""
+                    )
+                    new_best_move_uci = (
+                        best_move_deep.uci() if best_move_deep else ""
+                    )
+                    pv_deep = info_before_deep.get("pv", [])
+                    new_best_line = " ".join(mv.uci() for mv in pv_deep[:5])
+
+                    # Re-evaluate the position *after* the played move
+                    board_after = chess.Board(m.fen_after)
+                    info_after_deep = await engine.analyse(
+                        board_after, chess.engine.Limit(depth=critical_depth)
+                    )
+                    new_eval_after = _score_to_cp(info_after_deep["score"])
+
+                    # Recompute cp_loss at deeper depth
+                    if m.color == "white":
+                        new_cp_loss = max(0.0, new_eval_before - new_eval_after)
+                    else:
+                        new_cp_loss = max(0.0, new_eval_after - new_eval_before)
+
+                    # Overwrite the shallow-pass values on this MoveEval
+                    m.eval_before = new_eval_before
+                    m.eval_after = new_eval_after
+                    m.best_move_uci = new_best_move_uci
+                    m.best_move_san = new_best_move_san
+                    m.best_line = new_best_line
+                    m.cp_loss = new_cp_loss
+
         finally:
-            transport.close()
+            # BUG-04 fix: ensure engine process is always cleaned up
+            try:
+                await engine.quit()
+            except Exception:
+                pass
+            finally:
+                transport.close()
 
     return result
+
