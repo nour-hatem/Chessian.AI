@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import create_tables, engine
-from app.routers import games, import_, analysis
+from app.routers import games, import_, analysis, puzzles
 
 
 @asynccontextmanager
@@ -42,6 +42,7 @@ app.add_middleware(
 app.include_router(games.router, prefix="/api/games", tags=["games"])
 app.include_router(import_.router, prefix="/api/import", tags=["import"])
 app.include_router(analysis.router, prefix="/api/analysis", tags=["analysis"])
+app.include_router(puzzles.router, prefix="/api/puzzles", tags=["puzzles"])
 
 
 @app.get("/api/health")

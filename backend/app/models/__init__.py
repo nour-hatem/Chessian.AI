@@ -37,6 +37,7 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     games = relationship("Game", back_populates="user")
+    puzzle_attempts = relationship("PuzzleAttempt", back_populates="user")
 
 
 class Game(Base):
@@ -132,3 +133,58 @@ class MoveExplanation(Base):
     generated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     move_analysis = relationship("MoveAnalysis", back_populates="explanation")
+
+
+class Puzzle(Base):
+    """A single tactical puzzle sourced from Lichess."""
+
+    __tablename__ = "puzzles"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    lichess_id = Column(String(20), unique=True, nullable=False, index=True)
+    # FEN of the position *before* the first puzzle move (opponent's last move
+    # has already been played; it is the user's turn to find the winning move).
+    fen = Column(Text, nullable=False)
+    # Space-separated UCI moves forming the full solution line, e.g.
+    # "e2e4 e7e5 d1h5" — the first move is the opponent's "setup" move; the
+    # user must play the second move (index 1), then the engine replies, etc.
+    moves = Column(Text, nullable=False)
+    themes = Column(JSON, nullable=True)         # list[str] e.g. ["fork", "pin"]
+    opening_tags = Column(JSON, nullable=True)   # list[str] e.g. ["sicilianDefense"]
+    rating = Column(Integer, nullable=False, index=True)
+    rating_deviation = Column(Integer, default=500)
+    popularity = Column(Integer, default=0)
+    nb_plays = Column(Integer, default=0)
+    game_url = Column(String(200), nullable=True)
+    imported_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    attempts = relationship("PuzzleAttempt", back_populates="puzzle")
+
+
+class PuzzleAttempt(Base):
+    """SM-2 spaced-repetition state for one user × one puzzle."""
+
+    __tablename__ = "puzzle_attempts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    puzzle_id = Column(UUID(as_uuid=True), ForeignKey("puzzles.id", ondelete="CASCADE"), nullable=False)
+
+    # SM-2 state fields
+    easiness = Column(Float, default=2.5)     # E-factor; floor is 1.3
+    interval = Column(Integer, default=1)     # days until next review
+    repetitions = Column(Integer, default=0)  # consecutive correct answers so far
+    next_due_date = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    # Tracking
+    last_attempted_at = Column(DateTime(timezone=True), nullable=True)
+    last_quality = Column(Integer, nullable=True)  # last SM-2 quality score (0-5)
+    total_attempts = Column(Integer, default=0)
+    total_correct = Column(Integer, default=0)
+
+    user = relationship("User", back_populates="puzzle_attempts")
+    puzzle = relationship("Puzzle", back_populates="attempts")
