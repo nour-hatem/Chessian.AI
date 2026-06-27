@@ -1,78 +1,318 @@
-import Link from "next/link";
-import Navbar from "@/components/Layout/Navbar";
-import styles from "../coming-soon.module.css";
+"use client";
 
-const FEATURES = [
-  {
-    icon: "🎯",
-    name: "Weakness-Targeted Puzzles",
-    desc: "Automatically selects puzzles that target your specific tactical blindspots — forks, pins, back-rank threats — based on your actual game history.",
-  },
-  {
-    icon: "🔄",
-    name: "Spaced Repetition",
-    desc: "SM-2 algorithm schedules re-presentation of previously failed puzzles before you forget them, just like Anki for chess.",
-  },
-  {
-    icon: "📈",
-    name: "Separate Puzzle Rating",
-    desc: "Track your puzzle rating independently from your game rating. Watch your tactical vision improve over time.",
-  },
-  {
-    icon: "🏷️",
-    name: "Motif Tagging",
-    desc: "Every puzzle tagged with its tactical motif. Focus on specific themes or let the AI choose based on your blindspot map.",
-  },
-  {
-    icon: "🧠",
-    name: "Flow State Difficulty",
-    desc: "Dynamic difficulty keeps puzzles just beyond your current ability — challenging enough to learn, easy enough to stay engaged.",
-  },
-  {
-    icon: "📊",
-    name: "Game-to-Puzzle Pipeline",
-    desc: "No other platform connects your game analysis to puzzle selection. Missed a fork in your game? You'll drill forks until you don't.",
-  },
-];
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Chess } from "chess.js";
+import Navbar from "@/components/Layout/Navbar";
+import ChessBoard from "@/components/Board/ChessBoard";
+import styles from "./puzzles.module.css";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+/* ── Types ── */
+interface SM2Data {
+  easiness: number;
+  interval: number;
+  repetitions: number;
+  next_due_date: string;
+}
+
+interface PuzzleData {
+  puzzle_id: string;
+  lichess_id: string;
+  fen: string;
+  moves: string; // space-separated UCI
+  themes: string[];
+  opening_tags: string[];
+  rating: number;
+  is_new: boolean;
+  sm2: SM2Data | null;
+}
+
+interface StatsData {
+  total_attempted: number;
+  total_correct: number;
+  current_streak: number;
+  puzzles_due_today: number;
+  rating_center: number;
+}
 
 export default function PuzzlesPage() {
+  const [puzzle, setPuzzle] = useState<PuzzleData | null>(null);
+  const [stats, setStats] = useState<StatsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  // Game state
+  const [fen, setFen] = useState("");
+  const [movesList, setMovesList] = useState<string[]>([]);
+  const [currentMoveIdx, setCurrentMoveIdx] = useState(0); // which move is NEXT
+  const [orientation, setOrientation] = useState<"white" | "black">("white");
+  
+  // UI feedback
+  const [feedback, setFeedback] = useState<"correct" | "wrong" | null>(null);
+  const [sm2Result, setSm2Result] = useState<SM2Data | null>(null);
+  const [waitingForNext, setWaitingForNext] = useState(false);
+
+  const chessRef = useRef<Chess>(new Chess());
+
+  /* ── Fetching ── */
+  const fetchStats = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/puzzles/stats`);
+      if (res.ok) {
+        setStats(await res.json());
+      }
+    } catch (err) {
+      console.error("Failed to load stats", err);
+    }
+  };
+
+  const fetchNextPuzzle = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    setFeedback(null);
+    setSm2Result(null);
+    setWaitingForNext(false);
+    
+    try {
+      const res = await fetch(`${API_BASE}/api/puzzles/next`);
+      if (!res.ok) {
+        if (res.status === 404) {
+          setError("No puzzles available in your rating band.");
+        } else {
+          setError(`Failed to load puzzle (HTTP ${res.status})`);
+        }
+        setLoading(false);
+        return;
+      }
+      const data: PuzzleData = await res.json();
+      setPuzzle(data);
+      
+      // Initialize board
+      const chess = new Chess(data.fen);
+      chessRef.current = chess;
+      
+      const mList = data.moves.split(" ");
+      setMovesList(mList);
+      
+      // First move is opponent's setup move
+      const setupMove = mList[0];
+      chess.move(setupMove);
+      setFen(chess.fen());
+      setCurrentMoveIdx(1); // User must play move 1
+      
+      // The user's color is the side to move *after* the setup move
+      setOrientation(chess.turn() === "w" ? "white" : "black");
+      
+    } catch (err) {
+      setError("Cannot connect to backend.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Initial load
+  useEffect(() => {
+    fetchStats();
+    fetchNextPuzzle();
+  }, [fetchNextPuzzle]);
+
+  /* ── Submission ── */
+  const submitAttempt = async (correct: boolean) => {
+    if (!puzzle) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/puzzles/${puzzle.puzzle_id}/attempt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ correct, time_spent_ms: 5000 }), // dummy time for V1
+      });
+      if (res.ok) {
+        const result = await res.json();
+        setSm2Result(result.sm2);
+        // Refresh stats (streak etc)
+        fetchStats();
+      }
+    } catch (err) {
+      console.error("Failed to submit attempt", err);
+    }
+  };
+
+  /* ── Move Handling ── */
+  const onMove = (from: string, to: string, promotion?: string) => {
+    if (waitingForNext || feedback === "wrong") return;
+    
+    const uci = `${from}${to}${promotion ? promotion : ""}`;
+    const expectedUci = movesList[currentMoveIdx];
+    
+    const chess = chessRef.current;
+    
+    if (uci === expectedUci) {
+      // CORRECT MOVE
+      // Move was already made on board by Chessground, but we need to update our Chess instance
+      try {
+        chess.move({ from, to, promotion });
+        setFen(chess.fen());
+      } catch (e) {
+        console.error("Invalid move caught by chess.js", e);
+        return;
+      }
+      
+      if (currentMoveIdx === movesList.length - 1) {
+        // Puzzle completed successfully!
+        setFeedback("correct");
+        submitAttempt(true);
+        setWaitingForNext(true);
+        setTimeout(() => {
+          fetchNextPuzzle();
+        }, 1500);
+      } else {
+        // Correct, but puzzle continues. Opponent replies.
+        const nextIdx = currentMoveIdx + 1;
+        const opponentMove = movesList[nextIdx];
+        
+        // Slight delay for realism
+        setTimeout(() => {
+          chess.move(opponentMove);
+          setFen(chess.fen());
+          setCurrentMoveIdx(nextIdx + 1);
+        }, 500);
+      }
+    } else {
+      // WRONG MOVE
+      setFeedback("wrong");
+      submitAttempt(false);
+      setWaitingForNext(true);
+      
+      // We don't update chessRef with the wrong move, so we can revert
+      setTimeout(() => {
+        // Revert board to fen before wrong move
+        setFen(chess.fen());
+        setFeedback(null);
+        setWaitingForNext(false);
+        // We could let them try again, but attempt is already marked wrong.
+        // Actually, just showing them the correct move or letting them retry is good UX.
+        // For V1, we revert and let them keep trying until they get it right to finish the sequence.
+      }, 1000);
+    }
+  };
+
+  /* ── Render Helpers ── */
+  const formatInterval = (days: number) => {
+    if (days === 1) return "1 day";
+    if (days < 30) return `${days} days`;
+    if (days < 365) return `${Math.round(days / 30)} mo`;
+    return `${Math.round(days / 365)} yr`;
+  };
+
+  /* ── Render ── */
   return (
     <>
       <Navbar />
-      <main className={styles.comingSoonPage}>
-        <div className={styles.hero}>
-          <div className={styles.heroIcon}>🧩</div>
-          <h1 className={styles.heroTitle}>Smart Puzzles</h1>
-          <p className={styles.heroSubtitle}>
-            Puzzles auto-selected to target your specific weaknesses with spaced
-            repetition scheduling. Not random — personalized to your game data.
-          </p>
-          <div className={styles.badge}>
-            <span className={styles.badgeDot} />
-            Coming Soon
-          </div>
-        </div>
-
-        <div className={styles.featuresSection}>
-          <p className={styles.featuresTitle}>What to expect</p>
-          <div className={styles.featuresGrid}>
-            {FEATURES.map((f) => (
-              <div key={f.name} className={styles.featureCard}>
-                <span className={styles.featureIcon}>{f.icon}</span>
-                <div className={styles.featureName}>{f.name}</div>
-                <p className={styles.featureDesc}>{f.desc}</p>
+      <main className={styles.puzzlesPage}>
+        <div className={styles.container}>
+          
+          {loading ? (
+            <div className={styles.loadingState}>Loading next puzzle...</div>
+          ) : error ? (
+            <div className={styles.errorState}>
+              <p>{error}</p>
+              <button className="btn-primary" onClick={fetchNextPuzzle} style={{ marginTop: 16 }}>
+                Try Again
+              </button>
+            </div>
+          ) : puzzle ? (
+            <>
+              {/* Left: Board */}
+              <div className={styles.boardArea}>
+                <div className={`${styles.feedbackBanner} ${
+                  feedback === "correct" ? styles.feedbackCorrect :
+                  feedback === "wrong" ? styles.feedbackWrong : ""
+                }`}>
+                  {feedback === "correct" ? "✓ Correct!" : 
+                   feedback === "wrong" ? "✗ Incorrect. Try again." : 
+                   (orientation === "white" ? "White to move" : "Black to move")}
+                </div>
+                
+                <ChessBoard
+                  fen={fen}
+                  orientation={orientation}
+                  onMove={onMove}
+                  interactive={!waitingForNext}
+                />
               </div>
-            ))}
-          </div>
-        </div>
 
-        <div className={styles.ctaSection}>
-          <p className={styles.ctaText}>
-            In the meantime, import your games and get your analysis.
-          </p>
-          <Link href="/library" className={styles.ctaLink} id="puzzles-cta">
-            ← Go to Game Library
-          </Link>
+              {/* Right: Sidebar */}
+              <div className={styles.sidebar}>
+                {stats && (
+                  <div className={styles.statsGrid}>
+                    <div className={styles.card}>
+                      <div className={styles.statBox}>
+                        <span className={styles.statLabel}>Current Streak</span>
+                        <span className={`${styles.statValue} ${styles.streakValue}`}>
+                          {stats.current_streak} 🔥
+                        </span>
+                      </div>
+                    </div>
+                    <div className={styles.card}>
+                      <div className={styles.statBox}>
+                        <span className={styles.statLabel}>Rating Band</span>
+                        <span className={`${styles.statValue} ${styles.ratingValue}`}>
+                          ~{stats.rating_center}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className={styles.card}>
+                  <div className={styles.cardTitle}>Puzzle Info</div>
+                  <div className={styles.infoRow}>
+                    <span className={styles.infoLabel}>Rating</span>
+                    <span className={styles.infoValue}>{puzzle.rating}</span>
+                  </div>
+                  <div className={styles.infoRow}>
+                    <span className={styles.infoLabel}>Status</span>
+                    <span className={styles.infoValue}>
+                      {puzzle.is_new ? "New" : "Review"}
+                    </span>
+                  </div>
+                  
+                  {(puzzle.themes.length > 0 || puzzle.opening_tags.length > 0) && (
+                    <div className={styles.tags}>
+                      {puzzle.themes.slice(0, 4).map(t => (
+                        <span key={t} className={styles.tag}>{t}</span>
+                      ))}
+                      {puzzle.opening_tags.slice(0, 1).map(t => (
+                        <span key={t} className={styles.tag}>{t}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {sm2Result && (
+                  <div className={`${styles.card} animate-fade-in`}>
+                    <div className={styles.cardTitle}>SM-2 Update</div>
+                    <div className={styles.sm2Row}>
+                      <span className={styles.infoLabel}>Next Review</span>
+                      <span className={styles.infoValue}>
+                        in {formatInterval(sm2Result.interval)}
+                      </span>
+                    </div>
+                    <div className={styles.sm2Row}>
+                      <span className={styles.infoLabel}>Easiness Factor</span>
+                      <span className={styles.infoValue}>{sm2Result.easiness.toFixed(2)}</span>
+                    </div>
+                  </div>
+                )}
+                
+                {waitingForNext && feedback === "correct" && (
+                  <button className={`btn-primary ${styles.nextButton}`} onClick={fetchNextPuzzle}>
+                    Next Puzzle ➔
+                  </button>
+                )}
+              </div>
+            </>
+          ) : null}
         </div>
       </main>
     </>
