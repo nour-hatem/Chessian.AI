@@ -1,7 +1,9 @@
 """Configuration via environment variables."""
 
 from pydantic_settings import BaseSettings
+from pathlib import Path
 
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 class Settings(BaseSettings):
     """Application settings loaded from environment or .env file."""
@@ -24,7 +26,7 @@ class Settings(BaseSettings):
     debug: bool = True
     secret_key: str = "change-me-in-production"
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {"env_file": str(BASE_DIR / ".env"), "env_file_encoding": "utf-8"}
 
 
 settings = Settings()

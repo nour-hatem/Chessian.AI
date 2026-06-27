@@ -20,6 +20,8 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/chessian
+    env_file:
+      - .env
     depends_on:
       - postgres
     volumes:

@@ -79,7 +79,7 @@ def _score_to_cp(score: chess.engine.PovScore) -> float:
     pov = score.white()
     if pov.is_mate():
         # Large values for mate scores; correctly handles mate in 0
-        return 10000.0 if pov > chess.engine.Cp(0) else -10000.0
+        return 1000.0 if pov > chess.engine.Cp(0) else -1000.0
     cp = pov.score()
     return float(cp) if cp is not None else 0.0
 
