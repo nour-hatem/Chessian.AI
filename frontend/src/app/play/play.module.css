@@ -7,6 +7,25 @@
   padding: 80px var(--space-lg) var(--space-xl);
 }
 
+/* ============ Engine status ============ */
+.engineStatus {
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+.engineWarning {
+  max-width: var(--board-size);
+  padding: var(--space-sm) var(--space-md);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--move-inaccuracy);
+  background: rgba(255, 213, 79, 0.08);
+  border: 1px solid rgba(255, 213, 79, 0.25);
+  border-radius: var(--radius-md);
+}
+
 .setupCard {
   width: 100%;
   max-width: 600px;

@@ -2,12 +2,15 @@
 
 import { useState, useCallback, useRef } from "react";
 import { Chess } from "chess.js";
+import type { Move } from "chess.js";
 import Navbar from "@/components/Layout/Navbar";
 import ChessBoard from "@/components/Board/ChessBoard";
 import EvalBar from "@/components/EvalBar/EvalBar";
 import Clock from "@/components/Clock/Clock";
 import MoveList, { MoveEntry } from "@/components/MoveList/MoveList";
 import styles from "./play.module.css";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 type Difficulty = "beginner" | "intermediate" | "advanced" | "maximum";
 type TimeControl = "bullet1" | "blitz3" | "blitz5" | "rapid10" | "rapid15" | "classical30" | "unlimited";
@@ -22,11 +25,16 @@ const TIME_CONTROLS: Record<TimeControl, { time: number; increment: number; labe
   unlimited:   { time: 0,    increment: 0,  label: "∞ Unlimited" },
 };
 
+/**
+ * `depth` here is informational only — the authoritative engine settings
+ * (Stockfish Skill Level + depth) live in the backend so the client can't
+ * misreport strength. Labels describe the tier, not a measured Elo.
+ */
 const DIFFICULTIES: { key: Difficulty; label: string; desc: string; depth: number }[] = [
-  { key: "beginner",     label: "Beginner",     desc: "~800 ELO",  depth: 2 },
-  { key: "intermediate", label: "Intermediate", desc: "~1400 ELO", depth: 8 },
-  { key: "advanced",     label: "Advanced",     desc: "~2000 ELO", depth: 14 },
-  { key: "maximum",      label: "Maximum",      desc: "~3000+ ELO", depth: 22 },
+  { key: "beginner",     label: "Beginner",     desc: "Blunders often",   depth: 4 },
+  { key: "intermediate", label: "Intermediate", desc: "Club strength",    depth: 8 },
+  { key: "advanced",     label: "Advanced",     desc: "Strong play",      depth: 14 },
+  { key: "maximum",      label: "Maximum",      desc: "Full strength",    depth: 18 },
 ];
 
 export default function PlayPage() {
@@ -42,6 +50,8 @@ export default function PlayPage() {
   const [gameOver, setGameOver] = useState(false);
   const [gameResult, setGameResult] = useState("");
   const [whiteActive, setWhiteActive] = useState(true);
+  const [engineThinking, setEngineThinking] = useState(false);
+  const [engineOffline, setEngineOffline] = useState(false);
 
   const chessRef = useRef(new Chess());
   const moveHistoryRef = useRef<string[]>([]);
@@ -79,15 +89,55 @@ export default function PlayPage() {
     return false;
   }, []);
 
-  // BUG-26 fix: helper to make an engine move
-  const makeEngineMove = useCallback((chess: Chess) => {
-    const engineMoves = chess.moves();
-    if (engineMoves.length > 0) {
-      const randomMove = engineMoves[Math.floor(Math.random() * engineMoves.length)];
-      const engineMove = chess.move(randomMove);
+  // Ask the backend for Stockfish's reply. Falls back to a random legal move
+  // only if the engine endpoint is unreachable, so a missing/broken Stockfish
+  // degrades the game instead of freezing it — and says so in the result line.
+  const makeEngineMove = useCallback(
+    async (chess: Chess) => {
+      if (chess.isGameOver()) return;
+
+      setEngineThinking(true);
+      let chosenSan: string | null = null;
+
+      try {
+        const resp = await fetch(`${API_BASE}/api/play/move`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fen: chess.fen(), difficulty }),
+        });
+
+        if (resp.ok) {
+          const data = await resp.json();
+          chosenSan = data.move_san as string;
+          setEvaluation(typeof data.eval_cp === "number" ? data.eval_cp : 0);
+          setEngineOffline(false);
+        } else {
+          setEngineOffline(true);
+        }
+      } catch {
+        setEngineOffline(true);
+      } finally {
+        setEngineThinking(false);
+      }
+
+      let engineMove: Move | null = null;
+      if (chosenSan) {
+        try {
+          engineMove = chess.move(chosenSan);
+        } catch {
+          engineMove = null;
+        }
+      }
+
+      if (!engineMove) {
+        // Fallback: random legal move.
+        const legal = chess.moves();
+        if (legal.length === 0) return;
+        engineMove = chess.move(legal[Math.floor(Math.random() * legal.length)]);
+      }
+
       if (engineMove) {
         const isEngineWhite = engineMove.color === "w";
-        // BUG-11 fix: use fullmove number from the position before the move
         const engMoveNum = chess.moveNumber() - (isEngineWhite ? 1 : 0);
         moveHistoryRef.current.push(engineMove.san);
         addMoveToList(engineMove.san, engMoveNum, isEngineWhite);
@@ -96,8 +146,9 @@ export default function PlayPage() {
         setWhiteActive(isEngineWhite ? false : true);
         checkGameEnd(chess);
       }
-    }
-  }, [addMoveToList, checkGameEnd]);
+    },
+    [addMoveToList, checkGameEnd, difficulty]
+  );
 
   const startGame = useCallback(() => {
     const chess = new Chess();
@@ -114,7 +165,7 @@ export default function PlayPage() {
 
     // BUG-26 fix: if playing as black, engine (white) moves first
     if (playerColor === "black") {
-      setTimeout(() => makeEngineMove(chess), 400);
+      setTimeout(() => void makeEngineMove(chess), 400);
     }
   }, [playerColor, makeEngineMove]);
 
@@ -135,7 +186,7 @@ export default function PlayPage() {
 
         if (!checkGameEnd(chess)) {
           // Engine responds
-          setTimeout(() => makeEngineMove(chess), 300);
+          setTimeout(() => void makeEngineMove(chess), 300);
         }
       }
     },
@@ -246,8 +297,18 @@ export default function PlayPage() {
               fen={fen}
               orientation={playerColor}
               onMove={handlePlayerMove}
-              interactive={!gameOver}
+              interactive={!gameOver && !engineThinking}
             />
+
+            {engineThinking && (
+              <p className={styles.engineStatus}>Engine is thinking…</p>
+            )}
+            {engineOffline && (
+              <p className={styles.engineWarning}>
+                ⚠ Engine unreachable — playing random replies. Check that the
+                backend and Stockfish are running.
+              </p>
+            )}
 
             {tc.time > 0 && (
               <Clock
