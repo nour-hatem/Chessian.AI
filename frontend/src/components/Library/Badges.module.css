@@ -1,0 +1,112 @@
+/* ── Result badge (W / L / D) ── */
+.result {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 var(--space-sm);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.8rem;
+  line-height: 1;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+}
+
+.win {
+  background: rgba(102, 187, 106, 0.14);
+  border-color: rgba(102, 187, 106, 0.3);
+  color: var(--move-great);
+}
+
+.loss {
+  background: rgba(239, 83, 80, 0.14);
+  border-color: rgba(239, 83, 80, 0.3);
+  color: var(--move-blunder);
+}
+
+.draw {
+  background: rgba(160, 160, 184, 0.12);
+  border-color: var(--border-medium);
+  color: var(--text-secondary);
+}
+
+.unknown {
+  background: var(--bg-tertiary);
+  border-color: var(--border-subtle);
+  color: var(--text-muted);
+}
+
+/* ── Analysis status pill ── */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.dot {
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.statusComplete {
+  background: rgba(0, 212, 170, 0.1);
+  border-color: rgba(0, 212, 170, 0.28);
+  color: var(--brand-secondary-light);
+}
+
+.statusComplete .dot {
+  background: var(--brand-secondary);
+}
+
+.statusRunning {
+  background: rgba(124, 92, 252, 0.1);
+  border-color: rgba(124, 92, 252, 0.28);
+  color: var(--brand-primary-light);
+}
+
+.statusRunning .dot {
+  background: var(--brand-primary-light);
+  animation: statusPulse 1.4s ease-in-out infinite;
+}
+
+.statusFailed {
+  background: rgba(239, 83, 80, 0.1);
+  border-color: rgba(239, 83, 80, 0.28);
+  color: var(--move-blunder);
+}
+
+.statusFailed .dot {
+  background: var(--move-blunder);
+}
+
+.statusNone {
+  background: var(--bg-tertiary);
+  border-color: var(--border-subtle);
+  color: var(--text-tertiary);
+}
+
+.statusNone .dot {
+  background: var(--text-muted);
+}
+
+@keyframes statusPulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.25; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .statusRunning .dot {
+    animation: none;
+  }
+}

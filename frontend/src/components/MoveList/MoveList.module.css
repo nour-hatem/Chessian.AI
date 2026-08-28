@@ -30,6 +30,18 @@
   flex: 1;
   overflow-y: auto;
   padding: var(--space-xs);
+  /* Positioned so child offsetTop is measured against this container,
+     which the auto-scroll-to-active-move logic relies on. */
+  position: relative;
+  /* Guarantees the list scrolls rather than growing the whole sidebar. */
+  max-height: 320px;
+}
+
+.emptyMoves {
+  padding: var(--space-lg) var(--space-md);
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
 }
 
 .moveRow {

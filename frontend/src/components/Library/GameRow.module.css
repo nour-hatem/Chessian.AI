@@ -1,0 +1,190 @@
+.row {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  background: var(--bg-glass);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  transition: border-color var(--transition-fast),
+              background var(--transition-fast),
+              transform var(--transition-fast);
+}
+
+.row:hover {
+  border-color: var(--border-medium);
+  background: var(--bg-glass-hover);
+  transform: translateX(3px);
+}
+
+/*
+ * Stretched link: covers the whole row so clicking anywhere navigates, while
+ * keeping the markup valid (no <button> nested inside an <a>) and the link
+ * itself keyboard-focusable. Interactive children sit above it via z-index.
+ */
+.rowLink {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: var(--radius-lg);
+  /* Text is provided by aria-label; nothing should render here. */
+  font-size: 0;
+  color: transparent;
+}
+
+.rowLink:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.players {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: 0.95rem;
+  font-weight: 600;
+  min-width: 0;
+}
+
+.colorChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 7px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.chipSwatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  border: 1px solid var(--border-medium);
+}
+
+.chipWhite { background: var(--eval-white); }
+.chipBlack { background: #2a2a2a; }
+
+.opponent {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vs {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: 0.78rem;
+  color: var(--text-tertiary);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.opening {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+
+.eco {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  padding: 1px 5px;
+  color: var(--brand-primary-light);
+  background: rgba(124, 92, 252, 0.1);
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.dot {
+  color: var(--text-muted);
+}
+
+.side {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-shrink: 0;
+  /* Above the stretched link so the button stays clickable. */
+  position: relative;
+  z-index: 1;
+}
+
+.sourceBadge {
+  padding: 2px 8px;
+  font-size: 0.68rem;
+  color: var(--text-tertiary);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+
+.actionBtn {
+  padding: 6px var(--space-md);
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.actionBtn:hover:not(:disabled) {
+  background: var(--bg-elevated);
+  border-color: var(--brand-primary);
+  color: var(--text-primary);
+}
+
+.actionBtn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.retryBtn {
+  border-color: rgba(239, 83, 80, 0.35);
+  color: var(--move-blunder);
+}
+
+@media (max-width: 760px) {
+  .row {
+    grid-template-columns: auto minmax(0, 1fr);
+    row-gap: var(--space-sm);
+  }
+
+  .side {
+    grid-column: 1 / -1;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .opening {
+    max-width: 100%;
+  }
+}

@@ -276,6 +276,18 @@ async def get_puzzle_stats(db: AsyncSession = Depends(get_db)):
     )
     puzzles_due_today = due_result.scalar_one() or 0
 
+    # Solved today: attempts last answered correctly during the current UTC day.
+    solved_today_result = await db.execute(
+        select(sqlfunc.count(PuzzleAttempt.id))
+        .where(
+            PuzzleAttempt.user_id == user_id,
+            PuzzleAttempt.last_attempted_at.is_not(None),
+            sqlfunc.date(PuzzleAttempt.last_attempted_at) == now.date(),
+            PuzzleAttempt.last_quality >= 3,
+        )
+    )
+    solved_today = solved_today_result.scalar_one() or 0
+
     # Current streak: walk attempts by last_attempted_at DESC,
     # count consecutive last_quality >= 3 from the top.
     recent = await db.execute(
@@ -301,5 +313,6 @@ async def get_puzzle_stats(db: AsyncSession = Depends(get_db)):
         "total_correct": total_correct,
         "current_streak": streak,
         "puzzles_due_today": puzzles_due_today,
+        "solved_today": solved_today,
         "rating_center": rating_center,
     }

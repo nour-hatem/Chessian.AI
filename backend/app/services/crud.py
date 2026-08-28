@@ -3,12 +3,111 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select, func, or_, case, delete
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import (
+    Integer,
+    and_,
+    case,
+    cast,
+    delete,
+    func,
+    literal,
+    or_,
+    select,
+    union_all,
+)
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Game, GameAnalysis, MoveAnalysis, MoveExplanation
+from app.models import Game, GameAnalysis, MoveAnalysis, MoveExplanation, User
+
+
+# ---------- Identity helpers ----------
+
+# Time-control buckets. Platform imports store a word ("blitz"), PGN uploads
+# store the raw header ("600+0"), so each bucket matches either form.
+_TIME_CONTROL_BUCKETS = {
+    "bullet": (None, 180),
+    "blitz": (180, 600),
+    "rapid": (600, 1800),
+    "classical": (1800, None),
+}
+
+_TIME_CONTROL_WORDS = {
+    "bullet": ["bullet", "ultrabullet"],
+    "blitz": ["blitz"],
+    "rapid": ["rapid"],
+    "classical": ["classical", "daily", "correspondence"],
+}
+
+
+def _time_control_condition(bucket: str):
+    """Build a filter matching one time-control bucket across both vocabularies.
+
+    Platform games store a speed word; PGN uploads store "<base>+<inc>" in
+    seconds. ``substring(tc, '^[0-9]+')`` yields NULL for the word form, so the
+    numeric comparison simply doesn't match those rows.
+    """
+    key = (bucket or "").strip().lower()
+    if key not in _TIME_CONTROL_BUCKETS:
+        return None
+
+    lo, hi = _TIME_CONTROL_BUCKETS[key]
+    base = cast(func.substring(Game.time_control, r"^[0-9]+"), Integer)
+
+    numeric = []
+    if lo is not None:
+        numeric.append(base >= lo)
+    if hi is not None:
+        numeric.append(base < hi)
+
+    return or_(
+        func.lower(Game.time_control).in_(_TIME_CONTROL_WORDS[key]),
+        and_(*numeric),
+    )
+
+
+async def resolve_user_usernames(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+) -> list[str]:
+    """Return the platform usernames belonging to this user, lowercased.
+
+    Prefers the explicit ``User.chesscom_username`` / ``lichess_username``
+    columns. When neither is set — true for anything imported before those
+    fields were persisted — falls back to inferring the name that appears most
+    often across the user's own games. The owner plays in every game they
+    import while opponents vary, so the modal username is reliably theirs.
+    """
+    user = (
+        await db.execute(select(User).where(User.id == user_id))
+    ).scalar_one_or_none()
+
+    explicit = []
+    if user is not None:
+        for name in (user.chesscom_username, user.lichess_username):
+            if name:
+                explicit.append(name.lower())
+    if explicit:
+        return explicit
+
+    # Fallback: modal username across both colours.
+    whites = select(Game.white_username.label("name")).where(
+        Game.user_id == user_id, Game.white_username.is_not(None)
+    )
+    blacks = select(Game.black_username.label("name")).where(
+        Game.user_id == user_id, Game.black_username.is_not(None)
+    )
+    both = union_all(whites, blacks).subquery()
+
+    stmt = (
+        select(func.lower(both.c.name).label("name"), func.count().label("n"))
+        .group_by(func.lower(both.c.name))
+        .order_by(func.count().desc())
+        .limit(1)
+    )
+    row = (await db.execute(stmt)).first()
+    return [row.name] if row and row.name else []
 
 
 # ---------- Games ----------
@@ -73,8 +172,25 @@ async def list_games(
     per_page: int = 20,
     source: str | None = None,
     search: str | None = None,
+    result: str | None = None,
+    analyzed: str | None = None,
+    time_control: str | None = None,
+    opening_eco: str | None = None,
+    usernames: list[str] | None = None,
 ) -> tuple[list[Game], int]:
-    """List games with pagination, filtering, and search. Returns (games, total)."""
+    """List games with pagination, filtering, and search. Returns (games, total).
+
+    Filters
+    -------
+    source        exact match on import source
+    search        ILIKE across opening name and both player names
+    result        "win" / "loss" / "draw" from the library owner's perspective
+                  (needs ``usernames``; ignored when the side is unknown)
+    analyzed      "yes" (analysis complete) / "no" (never analyzed or still
+                  pending/processing) / "failed"
+    time_control  "bullet" / "blitz" / "rapid" / "classical"
+    opening_eco   exact ECO code, used by the openings → library drill-down
+    """
     base = select(Game).where(Game.user_id == user_id)
 
     if source:
@@ -90,6 +206,52 @@ async def list_games(
             )
         )
 
+    if opening_eco:
+        base = base.where(Game.opening_eco == opening_eco)
+
+    if time_control:
+        cond = _time_control_condition(time_control)
+        if cond is not None:
+            base = base.where(cond)
+
+    if result:
+        key = result.strip().lower()
+        names = [u.lower() for u in (usernames or [])]
+        if names and key in ("win", "loss", "draw"):
+            is_white = func.lower(Game.white_username).in_(names)
+            is_black = func.lower(Game.black_username).in_(names)
+            if key == "draw":
+                base = base.where(Game.result == "1/2-1/2")
+            elif key == "win":
+                base = base.where(
+                    or_(
+                        and_(is_white, Game.result == "1-0"),
+                        and_(is_black, Game.result == "0-1"),
+                    )
+                )
+            else:
+                base = base.where(
+                    or_(
+                        and_(is_white, Game.result == "0-1"),
+                        and_(is_black, Game.result == "1-0"),
+                    )
+                )
+
+    if analyzed:
+        key = analyzed.strip().lower()
+        complete_ids = select(GameAnalysis.game_id).where(
+            GameAnalysis.status == "complete"
+        )
+        failed_ids = select(GameAnalysis.game_id).where(
+            GameAnalysis.status == "failed"
+        )
+        if key in ("yes", "true", "analyzed"):
+            base = base.where(Game.id.in_(complete_ids))
+        elif key in ("no", "false", "unanalyzed"):
+            base = base.where(Game.id.not_in(complete_ids))
+        elif key == "failed":
+            base = base.where(Game.id.in_(failed_ids))
+
     # Total count
     count_stmt = select(func.count()).select_from(base.subquery())
     total = (await db.execute(count_stmt)).scalar_one()
@@ -102,8 +264,8 @@ async def list_games(
         .offset((page - 1) * per_page)
         .limit(per_page)
     )
-    result = await db.execute(stmt)
-    games = list(result.scalars().all())
+    result_rows = await db.execute(stmt)
+    games = list(result_rows.scalars().all())
 
     return games, total
 
@@ -258,27 +420,31 @@ async def save_move_explanation(
     """
     Persist an LLM-generated explanation for a single move.
 
-    If an explanation already exists for this move_analysis_id (unique
-    constraint violation), the existing record is returned unchanged.
+    Uses INSERT ... ON CONFLICT DO NOTHING rather than catching IntegrityError.
+    The previous version rolled the session back on a duplicate, which also
+    discarded every explanation added earlier in the caller's loop (they are
+    committed once, after the loop). A conflicting insert is now a no-op and
+    the existing row is returned.
     """
-    record = MoveExplanation(
-        id=uuid.uuid4(),
-        move_analysis_id=move_analysis_id,
-        explanation=explanation,
-        model_used=model_used,
+    stmt = (
+        pg_insert(MoveExplanation)
+        .values(
+            id=uuid.uuid4(),
+            move_analysis_id=move_analysis_id,
+            explanation=explanation,
+            model_used=model_used,
+            generated_at=datetime.now(timezone.utc),
+        )
+        .on_conflict_do_nothing(index_elements=["move_analysis_id"])
     )
-    try:
-        db.add(record)
-        await db.flush()
-        return record
-    except IntegrityError:
-        # Duplicate — roll back the failed flush and return the existing row
-        await db.rollback()
-        stmt = select(MoveExplanation).where(
+    await db.execute(stmt)
+
+    existing = await db.execute(
+        select(MoveExplanation).where(
             MoveExplanation.move_analysis_id == move_analysis_id
         )
-        result = await db.execute(stmt)
-        return result.scalar_one()
+    )
+    return existing.scalar_one()
 
 
 async def get_explanations_for_game(
@@ -305,38 +471,68 @@ async def get_explanations_for_game(
 async def get_opening_repertoire(
     db: AsyncSession,
     user_id: uuid.UUID,
-    user_username: str,
+    usernames: list[str],
+    *,
+    min_games: int = 3,
 ) -> list[dict]:
     """
     Aggregate per-opening stats across all analyzed games for a user.
 
-    Joins Game -> GameAnalysis, groups by ECO + opening name.
-    Only returns openings with >= 3 games.
-    Returns raw result counts (result_1_0, result_0_1, result_draw)
-    rather than win/loss since we don't track which color the user played.
+    Joins Game -> GameAnalysis, groups by ECO + opening name, and reports
+    wins/losses/draws **from the user's own perspective** along with the
+    accuracy of the side the user actually played.
+
+    ``usernames`` must be lowercased (see ``resolve_user_usernames``). When it
+    is empty the user's colour cannot be determined, so accuracy and W/L/D are
+    returned as None/0 rather than silently attributing every game to Black —
+    which is what the previous exact, case-sensitive comparison against a
+    hardcoded fallback name did.
     """
-    user_accuracy_expr = case(
-        (Game.white_username == user_username, GameAnalysis.white_accuracy),
-        else_=GameAnalysis.black_accuracy
-    )
+    names = [u.lower() for u in (usernames or [])]
+
+    if names:
+        is_white = func.lower(Game.white_username).in_(names)
+        is_black = func.lower(Game.black_username).in_(names)
+
+        user_accuracy_expr = case(
+            (is_white, GameAnalysis.white_accuracy),
+            (is_black, GameAnalysis.black_accuracy),
+        )
+        opp_accuracy_expr = case(
+            (is_white, GameAnalysis.black_accuracy),
+            (is_black, GameAnalysis.white_accuracy),
+        )
+        win_expr = case(
+            (and_(is_white, Game.result == "1-0"), 1),
+            (and_(is_black, Game.result == "0-1"), 1),
+            else_=0,
+        )
+        loss_expr = case(
+            (and_(is_white, Game.result == "0-1"), 1),
+            (and_(is_black, Game.result == "1-0"), 1),
+            else_=0,
+        )
+        white_games_expr = case((is_white, 1), else_=0)
+    else:
+        user_accuracy_expr = literal(None)
+        opp_accuracy_expr = literal(None)
+        win_expr = literal(0)
+        loss_expr = literal(0)
+        white_games_expr = literal(0)
+
+    draw_expr = case((Game.result == "1/2-1/2", 1), else_=0)
 
     stmt = (
         select(
             Game.opening_eco,
             Game.opening_name,
             func.count().label("games_played"),
-            # Result counts
-            func.sum(
-                case((Game.result == "1-0", 1), else_=0)
-            ).label("result_1_0"),
-            func.sum(
-                case((Game.result == "0-1", 1), else_=0)
-            ).label("result_0_1"),
-            func.sum(
-                case((Game.result == "1/2-1/2", 1), else_=0)
-            ).label("result_draw"),
-            # Accuracy averages
+            func.sum(win_expr).label("wins"),
+            func.sum(loss_expr).label("losses"),
+            func.sum(draw_expr).label("draws"),
+            func.sum(white_games_expr).label("games_as_white"),
             func.avg(user_accuracy_expr).label("avg_user_accuracy"),
+            func.avg(opp_accuracy_expr).label("avg_opponent_accuracy"),
         )
         .join(GameAnalysis, Game.id == GameAnalysis.game_id)
         .where(
@@ -344,29 +540,48 @@ async def get_opening_repertoire(
             GameAnalysis.status == "complete",
         )
         .group_by(Game.opening_eco, Game.opening_name)
-        .having(func.count() >= 3)
+        .having(func.count() >= min_games)
         .order_by(func.count().desc())
     )
 
-    result = await db.execute(stmt)
-    rows = result.all()
+    rows = (await db.execute(stmt)).all()
 
     openings = []
     for row in rows:
         games = row.games_played or 0
-        r1_0 = int(row.result_1_0 or 0)
-        r0_1 = int(row.result_0_1 or 0)
-        rdraw = int(row.result_draw or 0)
-        avg_user = round(float(row.avg_user_accuracy), 1) if row.avg_user_accuracy is not None else None
+        wins = int(row.wins or 0)
+        losses = int(row.losses or 0)
+        draws = int(row.draws or 0)
+
+        avg_user = (
+            round(float(row.avg_user_accuracy), 1)
+            if row.avg_user_accuracy is not None
+            else None
+        )
+        avg_opp = (
+            round(float(row.avg_opponent_accuracy), 1)
+            if row.avg_opponent_accuracy is not None
+            else None
+        )
+
+        # Score from the user's perspective: a draw counts as half a point.
+        decided = wins + losses + draws
+        score_pct = (
+            round(((wins + 0.5 * draws) / decided) * 100, 1) if decided else None
+        )
 
         openings.append({
             "eco": row.opening_eco or "",
             "name": row.opening_name or "Unknown",
             "games_played": games,
-            "result_1_0": r1_0,
-            "result_0_1": r0_1,
-            "result_draw": rdraw,
+            "wins": wins,
+            "losses": losses,
+            "draws": draws,
+            "games_as_white": int(row.games_as_white or 0),
+            "games_as_black": games - int(row.games_as_white or 0),
+            "score_pct": score_pct,
             "avg_user_accuracy": avg_user,
+            "avg_opponent_accuracy": avg_opp,
         })
 
     return openings

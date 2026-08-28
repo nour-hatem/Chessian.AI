@@ -16,6 +16,28 @@ interface ChessBoardProps {
   viewOnly?: boolean;
   width?: number;
   highlights?: Map<string, string>;
+  /**
+   * Show the flip control. Defaults to `interactive` for backwards
+   * compatibility, but review boards (analysis) are non-interactive and still
+   * need to be flippable to study a game from Black's side.
+   */
+  allowFlip?: boolean;
+  /**
+   * Bump to force the board back to `fen`, even when `fen` itself is unchanged.
+   *
+   * This board applies a legal drag to its own chess.js instance before
+   * notifying the parent, so after a rejected move (a wrong puzzle answer) the
+   * parent's authoritative FEN is byte-identical to what it already passed —
+   * React sees no prop change and the board would stay on the wrong position.
+   * Incrementing `revision` re-runs the sync effect and snaps the piece back.
+   */
+  revision?: number;
+  /**
+   * Allow queuing a premove. Defaults to `interactive`, which suits playing a
+   * live game, but is wrong for puzzles where a queued move would fire against
+   * the scripted solution line.
+   */
+  allowPremoves?: boolean;
 }
 
 export default function ChessBoard({
@@ -26,11 +48,15 @@ export default function ChessBoard({
   lastMove,
   viewOnly = false,
   highlights,
+  allowFlip,
+  revision = 0,
+  allowPremoves,
 }: ChessBoardProps) {
   const boardRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<Api | null>(null);
   const chessRef = useRef(new Chess(fen));
   const [boardFlipped, setBoardFlipped] = useState(orientation === "black");
+  const showFlip = allowFlip ?? interactive;
 
   const getTurnColor = useCallback((): "white" | "black" => {
     return chessRef.current.turn() === "w" ? "white" : "black";
@@ -108,7 +134,7 @@ export default function ChessBoard({
         duration: 200,
       },
       premovable: {
-        enabled: interactive,
+        enabled: allowPremoves ?? interactive,
       },
       draggable: {
         enabled: interactive,
@@ -132,7 +158,7 @@ export default function ChessBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Update FEN when prop changes
+  // Update FEN when prop changes (or when the parent forces a re-sync)
   useEffect(() => {
     if (!apiRef.current) return;
     chessRef.current = new Chess(fen);
@@ -145,7 +171,7 @@ export default function ChessBoard({
       },
       lastMove: lastMove as [Key, Key] | undefined,
     });
-  }, [fen, interactive, lastMove, getTurnColor, getLegalMoves]);
+  }, [fen, revision, interactive, lastMove, getTurnColor, getLegalMoves]);
 
   // H5 fix: Update event handler when handleMove changes to prevent stale closures
   useEffect(() => {
@@ -182,7 +208,7 @@ export default function ChessBoard({
       <div className={styles.boardWrapper}>
         <div ref={boardRef} className={styles.board} id="chess-board" />
       </div>
-      {interactive && (
+      {showFlip && (
         <div className={styles.boardControls}>
           <button
             className="btn-icon"

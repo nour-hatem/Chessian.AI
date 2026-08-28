@@ -4,9 +4,11 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, UploadFile, File
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.models import User
 from app.schemas import ImportRequest, ImportProgress
 from app.services import crud
 from app.services.auth import ensure_dev_user
@@ -18,6 +20,29 @@ from app.services.importer import (
 )
 
 router = APIRouter()
+
+
+async def _remember_platform_username(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    platform: str,
+    username: str,
+) -> None:
+    """Persist the username we just imported as, on the user record.
+
+    Downstream features (library W/L/D badges, opening repertoire accuracy)
+    need to know which side of a game the user played. Recording the platform
+    username here makes that lookup explicit instead of inferred.
+    """
+    field = "chesscom_username" if platform == "chesscom" else "lichess_username"
+    user = (
+        await db.execute(select(User).where(User.id == user_id))
+    ).scalar_one_or_none()
+    if user is None:
+        return
+    if getattr(user, field) != username:
+        setattr(user, field, username)
+        await db.commit()
 
 
 def _parse_played_at(value) -> datetime | None:
@@ -46,6 +71,7 @@ async def import_from_lichess(
 ):
     """Import games from Lichess for a given username."""
     user_id = await ensure_dev_user(db)
+    await _remember_platform_username(db, user_id, "lichess", request.username)
     games_imported = 0
     games_skipped = 0
 
@@ -108,6 +134,7 @@ async def import_from_chesscom(
 ):
     """Import games from Chess.com for a given username."""
     user_id = await ensure_dev_user(db)
+    await _remember_platform_username(db, user_id, "chesscom", request.username)
     games_imported = 0
     games_skipped = 0
 

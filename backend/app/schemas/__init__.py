@@ -28,6 +28,13 @@ class GameResponse(GameBase):
     id: uuid.UUID
     imported_at: datetime
     has_analysis: bool = False
+    # Raw analysis lifecycle state so the client can tell "never analyzed"
+    # (None) apart from pending / processing / complete / failed.
+    analysis_status: Optional[str] = None
+    # Which side the library owner played, and the result from their point of
+    # view ("win" / "loss" / "draw"). None when the side can't be determined.
+    user_color: Optional[str] = None
+    user_result: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

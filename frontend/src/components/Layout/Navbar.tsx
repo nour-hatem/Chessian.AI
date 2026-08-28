@@ -5,14 +5,25 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import styles from "./Navbar.module.css";
 
-const NAV_ITEMS = [
+/**
+ * Only routes that actually work are linked here.
+ *
+ * /coach and /plan are still "Coming Soon" placeholder pages, so they are
+ * deliberately left out of the nav rather than advertised — the pages remain
+ * reachable by direct URL for development. Add them back once they render real
+ * data.
+ */
+const NAV_ITEMS: {
+  href: string;
+  label: string;
+  icon: string;
+  tag?: string;
+}[] = [
   { href: "/", label: "Home", icon: "⚡" },
   { href: "/play", label: "Play", icon: "♟" },
   { href: "/library", label: "Library", icon: "📚" },
   { href: "/openings", label: "Openings", icon: "♞" },
-  { href: "/puzzles", label: "Puzzles", icon: "🧩", tag: "soon" },
-  { href: "/coach", label: "Coach", icon: "🤖", tag: "soon" },
-  { href: "/plan", label: "Plan", icon: "📈", tag: "soon" },
+  { href: "/puzzles", label: "Puzzles", icon: "🧩" },
 ];
 
 export default function Navbar() {

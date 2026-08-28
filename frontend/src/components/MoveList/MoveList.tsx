@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import styles from "./MoveList.module.css";
 
 export interface MoveEntry {
@@ -7,10 +8,17 @@ export interface MoveEntry {
   white: {
     san: string;
     classification?: string;
+    /**
+     * Position index this move leads to, matching the consumer's FEN history.
+     * Optional: when omitted the list falls back to assuming a dense,
+     * white-first ply sequence (`row * 2 + 1`).
+     */
+    ply?: number;
   };
   black?: {
     san: string;
     classification?: string;
+    ply?: number;
   };
 }
 
@@ -51,44 +59,71 @@ export default function MoveList({
   currentMoveIndex,
   onMoveClick,
 }: MoveListProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const activeRef = useRef<HTMLButtonElement>(null);
+
+  /* Keep the active move in view as the user steps through the game. */
+  useEffect(() => {
+    const active = activeRef.current;
+    const container = scrollRef.current;
+    if (!active || !container) return;
+
+    const activeTop = active.offsetTop;
+    const activeBottom = activeTop + active.offsetHeight;
+    const viewTop = container.scrollTop;
+    const viewBottom = viewTop + container.clientHeight;
+
+    if (activeTop < viewTop || activeBottom > viewBottom) {
+      container.scrollTop = activeTop - container.clientHeight / 2;
+    }
+  }, [currentMoveIndex]);
+
   return (
     <div className={styles.moveList} id="move-list">
       <div className={styles.header}>
         <span className={styles.headerTitle}>Moves</span>
       </div>
-      <div className={styles.movesScroll}>
-        {moves.map((move, i) => {
-          const whiteIndex = i * 2 + 1;
-          const blackIndex = i * 2 + 2;
+      <div className={styles.movesScroll} ref={scrollRef}>
+        {moves.length === 0 ? (
+          <div className={styles.emptyMoves}>No moves to show</div>
+        ) : (
+          moves.map((move, i) => {
+            const whiteIndex = move.white.ply ?? i * 2 + 1;
+            const blackIndex = move.black?.ply ?? i * 2 + 2;
+            const whiteActive = currentMoveIndex === whiteIndex;
+            const blackActive = currentMoveIndex === blackIndex;
 
-          return (
-            <div key={move.number} className={styles.moveRow}>
-              <span className={styles.moveNumber}>{move.number}.</span>
-              <button
-                className={`${styles.moveBtn} ${currentMoveIndex === whiteIndex ? styles.moveBtnActive : ""}`}
-                style={{ color: getClassColor(move.white.classification) }}
-                onClick={() => onMoveClick(whiteIndex)}
-              >
-                {move.white.san}
-                <span className={styles.classSymbol}>
-                  {getClassSymbol(move.white.classification)}
-                </span>
-              </button>
-              {move.black && (
+            return (
+              <div key={`${move.number}-${i}`} className={styles.moveRow}>
+                <span className={styles.moveNumber}>{move.number}.</span>
                 <button
-                  className={`${styles.moveBtn} ${currentMoveIndex === blackIndex ? styles.moveBtnActive : ""}`}
-                  style={{ color: getClassColor(move.black.classification) }}
-                  onClick={() => onMoveClick(blackIndex)}
+                  ref={whiteActive ? activeRef : undefined}
+                  className={`${styles.moveBtn} ${whiteActive ? styles.moveBtnActive : ""}`}
+                  style={{ color: getClassColor(move.white.classification) }}
+                  onClick={() => onMoveClick(whiteIndex)}
                 >
-                  {move.black.san}
+                  {move.white.san}
                   <span className={styles.classSymbol}>
-                    {getClassSymbol(move.black.classification)}
+                    {getClassSymbol(move.white.classification)}
                   </span>
                 </button>
-              )}
-            </div>
-          );
-        })}
+                {move.black && (
+                  <button
+                    ref={blackActive ? activeRef : undefined}
+                    className={`${styles.moveBtn} ${blackActive ? styles.moveBtnActive : ""}`}
+                    style={{ color: getClassColor(move.black.classification) }}
+                    onClick={() => onMoveClick(blackIndex)}
+                  >
+                    {move.black.san}
+                    <span className={styles.classSymbol}>
+                      {getClassSymbol(move.black.classification)}
+                    </span>
+                  </button>
+                )}
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );
