@@ -1,52 +1,56 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import Navbar from "@/components/Layout/Navbar";
 import styles from "./openings.module.css";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-/* ─── Types (derived from crud.get_opening_repertoire return shape) ─── */
+/* ─── Types (mirror crud.get_opening_repertoire) ─── */
 interface Opening {
   eco: string;
   name: string;
   games_played: number;
-  result_1_0: number;   // wins  (1-0 games)
-  result_0_1: number;   // losses (0-1 games)
-  result_draw: number;  // draws
+  wins: number;
+  losses: number;
+  draws: number;
+  games_as_white: number;
+  games_as_black: number;
+  score_pct: number | null;
   avg_user_accuracy: number | null;
+  avg_opponent_accuracy: number | null;
 }
 
 interface RepertoireResponse {
   openings: Opening[];
   total: number;
+  identity_resolved: boolean;
 }
 
-type SortKey = "games" | "accuracy";
-type SortDir = "asc" | "desc";
+type SortKey = "played" | "best" | "worst";
 
 /* ─── Helpers ─── */
-function accuracyColor(val: number | null): string {
+function accuracyClass(val: number | null): string {
   if (val === null) return styles.accNull;
   if (val >= 80) return styles.accExcellent;
   if (val >= 60) return styles.accGood;
   return styles.accWeak;
 }
 
-function formatAccuracy(val: number | null): string {
+function formatPct(val: number | null, suffix = "%"): string {
   if (val === null) return "—";
-  return `${val.toFixed(1)}%`;
+  return `${val.toFixed(1)}${suffix}`;
 }
 
 /* ─── Component ─── */
 export default function OpeningsPage() {
   const [openings, setOpenings] = useState<Opening[]>([]);
+  const [identityResolved, setIdentityResolved] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [sortKey, setSortKey] = useState<SortKey>("games");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [sortKey, setSortKey] = useState<SortKey>("played");
 
-  /* ─── Fetch ─── */
   useEffect(() => {
     const fetchRepertoire = async () => {
       setLoading(true);
@@ -58,7 +62,8 @@ export default function OpeningsPage() {
           return;
         }
         const data: RepertoireResponse = await resp.json();
-        setOpenings(data.openings);
+        setOpenings(data.openings ?? []);
+        setIdentityResolved(data.identity_resolved !== false);
       } catch {
         setError("Cannot connect to backend — is the server running?");
       } finally {
@@ -71,45 +76,31 @@ export default function OpeningsPage() {
 
   /* ─── Sort ─── */
   const sorted = useMemo<Opening[]>(() => {
-    return [...openings].sort((a, b) => {
-      if (sortKey === "games") {
-        // games_played is always a number
-        return sortDir === "asc"
-          ? a.games_played - b.games_played
-          : b.games_played - a.games_played;
-      }
-      // accuracy sort — nulls always sink to the end regardless of direction
-      if (a.avg_user_accuracy === null && b.avg_user_accuracy === null) return 0;
-      if (a.avg_user_accuracy === null) return 1;   // a sinks to end
-      if (b.avg_user_accuracy === null) return -1;  // b sinks to end
-      // Both are numbers — apply direction
-      return sortDir === "asc"
-        ? a.avg_user_accuracy - b.avg_user_accuracy
-        : b.avg_user_accuracy - a.avg_user_accuracy;
-    });
-  }, [openings, sortKey, sortDir]);
+    const rows = [...openings];
 
-  /* ─── Sort toggle handler ─── */
-  const handleSort = (key: SortKey) => {
-    if (sortKey !== key) {
-      setSortKey(key);
-      // Default: games → desc (most played first), accuracy → desc (best first)
-      setSortDir("desc");
-    } else {
-      setSortDir((prev) => (prev === "desc" ? "asc" : "desc"));
+    if (sortKey === "played") {
+      rows.sort((a, b) => b.games_played - a.games_played);
+      return rows;
     }
-  };
 
-  const sortIcon = (key: SortKey) => {
-    if (sortKey !== key) return <span className={styles.sortIconInactive}>↕</span>;
-    return (
-      <span className={styles.sortIconActive}>
-        {sortDir === "desc" ? "↓" : "↑"}
-      </span>
-    );
-  };
+    // Accuracy sorts: rows without accuracy always sink to the bottom.
+    rows.sort((a, b) => {
+      const av = a.avg_user_accuracy;
+      const bv = b.avg_user_accuracy;
+      if (av === null && bv === null) return 0;
+      if (av === null) return 1;
+      if (bv === null) return -1;
+      return sortKey === "best" ? bv - av : av - bv;
+    });
+    return rows;
+  }, [openings, sortKey]);
 
-  /* ─── Render ─── */
+  const SORTS: { key: SortKey; label: string }[] = [
+    { key: "played", label: "Most played" },
+    { key: "best", label: "Best accuracy" },
+    { key: "worst", label: "Worst accuracy" },
+  ];
+
   return (
     <>
       <Navbar />
@@ -119,10 +110,17 @@ export default function OpeningsPage() {
             <span className="gradient-text">Opening</span> Repertoire
           </h1>
           <p className={styles.pageSubtitle}>
-            Openings you&apos;ve played in 3 or more analyzed games
+            Openings you&apos;ve played in 3 or more analyzed games. Results and
+            accuracy are shown from your side of the board.
           </p>
 
-          {/* Controls */}
+          {!loading && !error && !identityResolved && openings.length > 0 && (
+            <div className={styles.warningBanner} id="identity-warning">
+              ⚠ Could not work out which side you played, so results and accuracy
+              are unavailable. Re-run an import to record your platform username.
+            </div>
+          )}
+
           {!loading && !error && openings.length > 0 && (
             <div className={styles.controls}>
               <span className={styles.totalLabel}>
@@ -130,32 +128,24 @@ export default function OpeningsPage() {
               </span>
               <div className={styles.sortGroup}>
                 <span className={styles.sortLabel}>Sort by</span>
-                <button
-                  id="sort-games"
-                  className={`${styles.sortBtn} ${sortKey === "games" ? styles.sortBtnActive : ""}`}
-                  onClick={() => handleSort("games")}
-                >
-                  Most Played {sortIcon("games")}
-                </button>
-                <button
-                  id="sort-accuracy"
-                  className={`${styles.sortBtn} ${sortKey === "accuracy" ? styles.sortBtnActive : ""}`}
-                  onClick={() => handleSort("accuracy")}
-                >
-                  Avg Accuracy {sortIcon("accuracy")}
-                </button>
+                {SORTS.map((s) => (
+                  <button
+                    key={s.key}
+                    id={`sort-${s.key}`}
+                    className={`${styles.sortBtn} ${sortKey === s.key ? styles.sortBtnActive : ""}`}
+                    onClick={() => setSortKey(s.key)}
+                    aria-pressed={sortKey === s.key}
+                  >
+                    {s.label}
+                  </button>
+                ))}
               </div>
             </div>
           )}
 
-          {/* States */}
-          {loading && (
-            <div className={styles.loadingState}>Loading openings...</div>
-          )}
+          {loading && <div className={styles.loadingState}>Loading openings…</div>}
 
-          {!loading && error && (
-            <div className={styles.errorState}>{error}</div>
-          )}
+          {!loading && error && <div className={styles.errorState}>{error}</div>}
 
           {!loading && !error && openings.length === 0 && (
             <div className={styles.emptyState}>
@@ -165,77 +155,106 @@ export default function OpeningsPage() {
                 Import and analyze at least 3 games in the same opening to see
                 repertoire stats here.
               </p>
+              <Link href="/library" className={styles.emptyCta}>
+                → Go to Game Library
+              </Link>
             </div>
           )}
 
-          {/* Opening rows */}
           {!loading && !error && sorted.length > 0 && (
-            <div className={styles.openingsList}>
-              {sorted.map((op, i) => {
-                const total = op.games_played || 1; // guard divide-by-zero
-                const winPct  = (op.result_1_0  / total) * 100;
-                const drawPct = (op.result_draw / total) * 100;
-                const lossPct = (op.result_0_1  / total) * 100;
+            <div className={styles.tableWrap}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th scope="col" className={styles.thEco}>ECO</th>
+                    <th scope="col">Opening</th>
+                    <th scope="col" className={styles.thNum}>Games</th>
+                    <th scope="col" className={styles.thResults}>Results</th>
+                    <th scope="col" className={styles.thNum}>Score</th>
+                    <th scope="col" className={styles.thNum}>Accuracy</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((op, i) => {
+                    const total = op.games_played || 1;
+                    const winPct = (op.wins / total) * 100;
+                    const drawPct = (op.draws / total) * 100;
+                    const lossPct = (op.losses / total) * 100;
 
-                return (
-                  <div
-                    key={`${op.eco}-${op.name}`}
-                    className={`${styles.openingRow} animate-fade-in`}
-                    style={{ animationDelay: `${i * 40}ms` }}
-                    id={`opening-row-${i}`}
-                  >
-                    {/* Left: ECO + name + game count */}
-                    <div className={styles.rowLeft}>
-                      {op.eco && (
-                        <span className={styles.eco}>{op.eco}</span>
-                      )}
-                      <div className={styles.nameBlock}>
-                        <span className={styles.openingName}>{op.name}</span>
-                        <span className={styles.gamesCount}>
-                          {op.games_played} game{op.games_played !== 1 ? "s" : ""}
-                        </span>
-                      </div>
-                    </div>
+                    return (
+                      <tr key={`${op.eco}-${op.name}`} id={`opening-row-${i}`}>
+                        <td className={styles.tdEco}>
+                          {op.eco ? (
+                            <span className={styles.eco}>{op.eco}</span>
+                          ) : (
+                            <span className={styles.muted}>—</span>
+                          )}
+                        </td>
 
-                    {/* Center: proportional result bar */}
-                    <div className={styles.rowCenter}>
-                      <div className={styles.resultBar} title={`W ${op.result_1_0}  D ${op.result_draw}  L ${op.result_0_1}`}>
-                        {winPct  > 0 && (
-                          <div
-                            className={styles.barWin}
-                            style={{ width: `${winPct}%` }}
-                          />
-                        )}
-                        {drawPct > 0 && (
-                          <div
-                            className={styles.barDraw}
-                            style={{ width: `${drawPct}%` }}
-                          />
-                        )}
-                        {lossPct > 0 && (
-                          <div
-                            className={styles.barLoss}
-                            style={{ width: `${lossPct}%` }}
-                          />
-                        )}
-                      </div>
-                      <div className={styles.resultLabels}>
-                        <span className={styles.labelWin}>W {op.result_1_0}</span>
-                        <span className={styles.labelDraw}>D {op.result_draw}</span>
-                        <span className={styles.labelLoss}>L {op.result_0_1}</span>
-                      </div>
-                    </div>
+                        <td className={styles.tdName}>
+                          {op.eco ? (
+                            <Link
+                              href={`/library?opening=${encodeURIComponent(op.eco)}`}
+                              className={styles.nameLink}
+                              title="Show these games in the library"
+                            >
+                              {op.name}
+                            </Link>
+                          ) : (
+                            <span>{op.name}</span>
+                          )}
+                          <span className={styles.colorSplit}>
+                            {op.games_as_white}W / {op.games_as_black}B
+                          </span>
+                        </td>
 
-                    {/* Right: avg accuracy */}
-                    <div className={styles.rowRight}>
-                      <span className={`${styles.accuracyValue} ${accuracyColor(op.avg_user_accuracy)}`}>
-                        {formatAccuracy(op.avg_user_accuracy)}
-                      </span>
-                      <span className={styles.accuracyLabel}>avg accuracy</span>
-                    </div>
-                  </div>
-                );
-              })}
+                        <td className={styles.tdNum}>{op.games_played}</td>
+
+                        <td className={styles.tdResults}>
+                          <div
+                            className={styles.resultBar}
+                            title={`${op.wins}W  ${op.draws}D  ${op.losses}L`}
+                          >
+                            {winPct > 0 && (
+                              <div className={styles.barWin} style={{ width: `${winPct}%` }} />
+                            )}
+                            {drawPct > 0 && (
+                              <div className={styles.barDraw} style={{ width: `${drawPct}%` }} />
+                            )}
+                            {lossPct > 0 && (
+                              <div className={styles.barLoss} style={{ width: `${lossPct}%` }} />
+                            )}
+                          </div>
+                          <div className={styles.resultLabels}>
+                            <span className={styles.labelWin}>{op.wins}W</span>
+                            <span className={styles.labelDraw}>{op.draws}D</span>
+                            <span className={styles.labelLoss}>{op.losses}L</span>
+                          </div>
+                        </td>
+
+                        <td className={styles.tdNum}>
+                          <span className={styles.score}>
+                            {formatPct(op.score_pct)}
+                          </span>
+                        </td>
+
+                        <td className={styles.tdNum}>
+                          <span
+                            className={`${styles.accuracy} ${accuracyClass(op.avg_user_accuracy)}`}
+                          >
+                            {formatPct(op.avg_user_accuracy)}
+                          </span>
+                          {op.avg_opponent_accuracy !== null && (
+                            <span className={styles.oppAccuracy}>
+                              vs {formatPct(op.avg_opponent_accuracy)}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
