@@ -407,6 +407,25 @@
   color: var(--move-mistake);
 }
 
+/*
+ * Coach explanation text. Previously these were Tailwind utility classes
+ * ("text-sm text-blue-400 italic"), but Tailwind is not installed in this
+ * project — the classes resolved to nothing and the explanations, which are
+ * the headline feature, rendered as unstyled body text.
+ */
+.explanation {
+  margin-top: 6px;
+  font-size: 0.8rem;
+  font-style: italic;
+  line-height: 1.5;
+  color: var(--brand-primary-light);
+}
+
+.criticalItem .explanation {
+  /* Keep long explanations from stretching the row into an unreadable block. */
+  white-space: normal;
+}
+
 /* ---------- Move Detail Panel ---------- */
 .moveDetail {
   background: var(--bg-glass);
@@ -436,6 +455,14 @@
   justify-content: space-between;
   align-items: center;
   font-size: 0.85rem;
+}
+
+/* Stacked variant, for rows whose value is a paragraph rather than a token.
+   Replaces an inline style object on the coach-explanation row. */
+.moveDetailRowStacked {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-xs);
 }
 
 .moveDetailLabel {
@@ -508,6 +535,47 @@
 .pendingText {
   font-size: 0.9rem;
   color: var(--text-secondary);
+}
+
+.pendingActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: var(--space-sm);
+}
+
+.pendingNote {
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+}
+
+/* ---------- Board caption (current move, under the board) ---------- */
+.boardCaption {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  min-height: 24px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.boardCaptionMove {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.boardCaptionLoss {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--move-mistake);
+}
+
+.boardCaptionEmpty {
+  color: var(--text-muted);
 }
 
 /* ---------- Responsive ---------- */

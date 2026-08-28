@@ -101,6 +101,8 @@ export default function AnalysisPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [currentMoveIndex, setCurrentMoveIndex] = useState(0);
+  const [triggering, setTriggering] = useState(false);
+  const [triggerError, setTriggerError] = useState("");
 
   /* ─── Fetch all data ─── */
   useEffect(() => {
@@ -135,6 +137,57 @@ export default function AnalysisPage() {
     fetchData();
   }, [gameId]);
 
+  /* ─── Re-read just the analysis record (used by polling and after a retry) ─── */
+  const refreshAnalysis = useCallback(async () => {
+    const resp = await fetch(`${API_BASE}/api/analysis/${gameId}`);
+    if (resp.ok) {
+      setAnalysis(await resp.json());
+      return true;
+    }
+    return false;
+  }, [gameId]);
+
+  /* ─── Kick off (or retry) analysis from this page ─── */
+  const triggerAnalysis = useCallback(async () => {
+    setTriggering(true);
+    setTriggerError("");
+    try {
+      const resp = await fetch(`${API_BASE}/api/analysis/${gameId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!resp.ok) {
+        setTriggerError(`Could not start analysis (HTTP ${resp.status})`);
+        return;
+      }
+      await refreshAnalysis();
+    } catch {
+      setTriggerError("Cannot reach the backend to start analysis.");
+    } finally {
+      setTriggering(false);
+    }
+  }, [gameId, refreshAnalysis]);
+
+  /* ─── While the engine is running, poll until it settles ─── */
+  const analysisStatus = analysis?.status;
+  useEffect(() => {
+    if (analysisStatus !== "processing" && analysisStatus !== "pending") return;
+
+    let attempts = 0;
+    const timer = setInterval(async () => {
+      attempts += 1;
+      // Analysis runs as an in-process background task, so a backend restart
+      // can leave the record on "processing" indefinitely. Cap the polling.
+      if (attempts > 200) {
+        clearInterval(timer);
+        return;
+      }
+      await refreshAnalysis();
+    }, 3000);
+
+    return () => clearInterval(timer);
+  }, [analysisStatus, refreshAnalysis]);
+
   /* ─── Parse PGN into ordered FEN array ─── */
   const fenHistory = useMemo(() => {
     if (!pgn) return [];
@@ -160,32 +213,46 @@ export default function AnalysisPage() {
   const moveEntries: MoveEntry[] = useMemo(() => {
     if (!analysis?.moves) return [];
 
-    const entries: MoveEntry[] = [];
-    const grouped = new Map<number, { white?: MoveAnalysis; black?: MoveAnalysis }>();
+    // analysis.moves is ply-ordered (white before black within a move number),
+    // so the array index maps directly onto fenHistory: ply i lands at i + 1.
+    // Carrying the index explicitly avoids the old `row * 2 + 1` assumption,
+    // which desynced whenever a pairing was incomplete.
+    const grouped = new Map<
+      number,
+      { white?: { m: MoveAnalysis; ply: number }; black?: { m: MoveAnalysis; ply: number } }
+    >();
 
-    for (const m of analysis.moves) {
+    analysis.moves.forEach((m, i) => {
       const existing = grouped.get(m.move_number) || {};
-      if (m.color === "white") existing.white = m;
-      else existing.black = m;
+      const slot = { m, ply: i + 1 };
+      if (m.color === "white") existing.white = slot;
+      else existing.black = slot;
       grouped.set(m.move_number, existing);
-    }
+    });
 
+    const entries: MoveEntry[] = [];
     for (const [num, pair] of grouped) {
-      if (pair.white) {
-        entries.push({
-          number: num,
-          white: {
-            san: pair.white.move_san,
-            classification: pair.white.classification || undefined,
-          },
-          black: pair.black
-            ? {
-                san: pair.black.move_san,
-                classification: pair.black.classification || undefined,
-              }
-            : undefined,
-        });
-      }
+      // A game may begin on a black move (position set up from a FEN), so a
+      // missing white half must not drop the black move from the list.
+      const white = pair.white
+        ? {
+            san: pair.white.m.move_san,
+            classification: pair.white.m.classification || undefined,
+            ply: pair.white.ply,
+          }
+        : { san: "…", classification: undefined, ply: -1 };
+
+      entries.push({
+        number: num,
+        white,
+        black: pair.black
+          ? {
+              san: pair.black.m.move_san,
+              classification: pair.black.m.classification || undefined,
+              ply: pair.black.ply,
+            }
+          : undefined,
+      });
     }
 
     return entries;
@@ -202,7 +269,13 @@ export default function AnalysisPage() {
   }, [analysis]);
 
   /* ─── Current FEN ─── */
-  const currentFen = fenHistory[currentMoveIndex] || fenHistory[0] || "start";
+  // Falls back to a real starting FEN, not the string "start": ChessBoard feeds
+  // this straight into `new Chess(fen)`, which throws on an unparseable value,
+  // and fenHistory is empty whenever PGN parsing failed.
+  const currentFen =
+    fenHistory[currentMoveIndex] ||
+    fenHistory[0] ||
+    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
   /* ─── Current eval (for EvalBar) ─── */
   const currentEval = useMemo(() => {
@@ -309,23 +382,63 @@ export default function AnalysisPage() {
     );
   }
 
-  /* ─── Analysis pending / processing ─── */
-  if (!analysis || analysis.status === "pending" || analysis.status === "processing") {
+  /* ─── Analysis pending / processing / failed ─── */
+  if (
+    !analysis ||
+    analysis.status === "pending" ||
+    analysis.status === "processing" ||
+    analysis.status === "failed"
+  ) {
+    const status = analysis?.status;
+    const running = status === "processing" || status === "pending";
+
+    const title = running
+      ? "Analyzing…"
+      : status === "failed"
+        ? "Analysis Failed"
+        : "Analysis Not Started";
+
+    const text = running
+      ? "Stockfish is evaluating every move. This can take a few minutes depending on the game length."
+      : status === "failed"
+        ? "The engine run did not finish. You can start it again from here."
+        : "This game hasn't been analyzed yet. Start it below.";
+
     return (
       <>
         <Navbar />
         <main className={styles.analysisPage}>
           <div className={styles.pendingState}>
-            <div className={styles.pendingIcon}>⏳</div>
-            <h2 className={styles.pendingTitle}>
-              {analysis?.status === "processing" ? "Analyzing..." : "Analysis Not Started"}
-            </h2>
-            <p className={styles.pendingText}>
-              {analysis?.status === "processing"
-                ? "Stockfish is evaluating every move. This can take a few minutes depending on the game length."
-                : "This game hasn't been analyzed yet. Go back to the library and click Analyze."}
-            </p>
-            <a href="/library" className={styles.backLink}>← Back to Library</a>
+            <div className={styles.pendingIcon}>
+              {status === "failed" ? "⚠️" : "⏳"}
+            </div>
+            <h2 className={styles.pendingTitle}>{title}</h2>
+            <p className={styles.pendingText}>{text}</p>
+
+            <div className={styles.pendingActions}>
+              {!running && (
+                <button
+                  className="btn-primary"
+                  onClick={triggerAnalysis}
+                  disabled={triggering}
+                  id="btn-analyze"
+                >
+                  {triggering
+                    ? "Starting…"
+                    : status === "failed"
+                      ? "Retry analysis"
+                      : "Analyze this game"}
+                </button>
+              )}
+              <a href="/library" className={styles.backLink}>← Back to Library</a>
+            </div>
+
+            {running && (
+              <p className={styles.pendingNote}>
+                This page updates on its own when the analysis finishes.
+              </p>
+            )}
+            {triggerError && <p className={styles.pendingNote}>{triggerError}</p>}
           </div>
         </main>
       </>
@@ -370,7 +483,38 @@ export default function AnalysisPage() {
                 orientation="white"
                 interactive={false}
                 viewOnly={true}
+                allowFlip={true}
               />
+
+              {/* Current move caption */}
+              <div className={styles.boardCaption}>
+                {currentMoveDetail ? (
+                  <>
+                    <span className={styles.boardCaptionMove}>
+                      {currentMoveDetail.move_number}.
+                      {currentMoveDetail.color === "black" ? ".." : ""}{" "}
+                      {currentMoveDetail.move_san}
+                    </span>
+                    {currentMoveDetail.classification && (
+                      <span
+                        className={`${styles.classificationBadge} ${getClassBadge(
+                          currentMoveDetail.classification,
+                        )}`}
+                      >
+                        {currentMoveDetail.classification}
+                      </span>
+                    )}
+                    {currentMoveDetail.cp_loss != null &&
+                      currentMoveDetail.cp_loss > 0 && (
+                        <span className={styles.boardCaptionLoss}>
+                          −{Math.round(currentMoveDetail.cp_loss)}cp
+                        </span>
+                      )}
+                  </>
+                ) : (
+                  <span className={styles.boardCaptionEmpty}>Starting position</span>
+                )}
+              </div>
 
               {/* Navigation Controls */}
               <div className={styles.navControls}>
@@ -549,7 +693,7 @@ export default function AnalysisPage() {
                         </div>
                         <div className={styles.criticalClass}>{m.classification}</div>
                         {m.explanation && (
-                          <p className="text-sm text-blue-400 mt-1 italic">{m.explanation}</p>
+                          <p className={styles.explanation}>{m.explanation}</p>
                         )}
                       </div>
                       <span className={styles.criticalCpLoss}>
@@ -611,9 +755,11 @@ export default function AnalysisPage() {
                     </div>
                   )}
                   {currentMoveDetail.explanation && (
-                    <div className={styles.moveDetailRow} style={{flexDirection: "column", alignItems: "flex-start", gap: "0.25rem"}}>
+                    <div
+                      className={`${styles.moveDetailRow} ${styles.moveDetailRowStacked}`}
+                    >
                       <span className={styles.moveDetailLabel}>Coach Explanation</span>
-                      <p className="text-sm text-blue-400 italic">
+                      <p className={styles.explanation}>
                         {currentMoveDetail.explanation}
                       </p>
                     </div>
