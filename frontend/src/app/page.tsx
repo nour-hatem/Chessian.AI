@@ -2,7 +2,18 @@ import Link from "next/link";
 import Navbar from "@/components/Layout/Navbar";
 import styles from "./page.module.css";
 
-const FEATURES = [
+/**
+ * `soon: true` marks a feature that is not built yet. The landing page used to
+ * present all six identically, which promised an AI coach and a blindspot map
+ * that don't exist behind any working route.
+ */
+const FEATURES: {
+  icon: string;
+  title: string;
+  desc: string;
+  tag: string;
+  soon?: boolean;
+}[] = [
   {
     icon: "🔍",
     title: "Deep Move Analysis",
@@ -22,22 +33,24 @@ const FEATURES = [
     tag: "Novel",
   },
   {
+    icon: "🧩",
+    title: "Smart Puzzle Engine",
+    desc: "Puzzles scheduled by an SM-2 spaced-repetition system and matched to your rating band. Not random — adaptive.",
+    tag: "Adaptive",
+  },
+  {
     icon: "🎯",
     title: "Tactical Blindspot Map",
     desc: "Identifies which tactical motifs you repeatedly miss — forks, pins, back-rank threats — across your entire game history.",
-    tag: "Novel",
-  },
-  {
-    icon: "🧩",
-    title: "Smart Puzzle Engine",
-    desc: "Puzzles auto-selected to target your specific weaknesses with spaced repetition. Not random — personalized.",
-    tag: "Adaptive",
+    tag: "Planned",
+    soon: true,
   },
   {
     icon: "🤖",
     title: "AI Chess Coach",
     desc: "Chat with an AI coach that knows your games. Ask about your patterns, weaknesses, or any position — grounded in your data.",
-    tag: "RAG-Powered",
+    tag: "Planned",
+    soon: true,
   },
 ];
 
@@ -64,15 +77,15 @@ export default function Home() {
               plan to make you a stronger player.
             </p>
             <div className={styles.heroCta}>
-              <Link href="/play" className={styles.ctaPrimary} id="cta-play">
-                Start Playing
-              </Link>
               <Link
                 href="/library"
-                className={styles.ctaSecondary}
+                className={styles.ctaPrimary}
                 id="cta-import"
               >
                 Import Your Games
+              </Link>
+              <Link href="/puzzles" className={styles.ctaSecondary} id="cta-puzzles">
+                Train with Puzzles
               </Link>
             </div>
           </div>
@@ -86,11 +99,18 @@ export default function Home() {
           </h2>
           <div className={styles.featureGrid}>
             {FEATURES.map((f) => (
-              <div key={f.title} className={styles.featureCard}>
+              <div
+                key={f.title}
+                className={`${styles.featureCard} ${f.soon ? styles.featureCardSoon : ""}`}
+              >
                 <span className={styles.featureIcon}>{f.icon}</span>
                 <h3 className={styles.featureTitle}>{f.title}</h3>
                 <p className={styles.featureDesc}>{f.desc}</p>
-                <span className={styles.featureTag}>{f.tag}</span>
+                <span
+                  className={`${styles.featureTag} ${f.soon ? styles.featureTagSoon : ""}`}
+                >
+                  {f.tag}
+                </span>
               </div>
             ))}
           </div>
