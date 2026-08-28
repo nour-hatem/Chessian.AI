@@ -1,200 +1,232 @@
-/* ============================================================
-   Puzzles Page
-   ============================================================ */
-
 .puzzlesPage {
   min-height: 100vh;
-  padding: 80px var(--space-md) var(--space-xl);
-  display: flex;
-  justify-content: center;
+  padding: 80px var(--space-lg) var(--space-xl);
 }
 
 .container {
-  max-width: 1100px;
-  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(auto, 600px) 350px;
+  grid-template-columns: minmax(0, 1fr) 300px;
   gap: var(--space-xl);
   align-items: start;
 }
 
-/* ── Main Board Area ── */
+/* ── Board column ── */
 .boardArea {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: var(--space-md);
 }
 
 .feedbackBanner {
-  padding: var(--space-md);
-  border-radius: var(--radius-md);
-  font-weight: 600;
+  width: 100%;
+  max-width: var(--board-size);
+  padding: var(--space-sm) var(--space-md);
   text-align: center;
-  transition: all var(--transition-base);
-  min-height: 56px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-sm);
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-subtle);
+  font-size: 0.95rem;
+  font-weight: 600;
   color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-base);
 }
 
 .feedbackCorrect {
-  background: rgba(102, 187, 106, 0.15);
-  border-color: rgba(102, 187, 106, 0.3);
-  color: var(--move-great);
+  color: var(--brand-secondary-light);
+  background: rgba(0, 212, 170, 0.1);
+  border-color: rgba(0, 212, 170, 0.3);
 }
 
 .feedbackWrong {
-  background: rgba(239, 83, 80, 0.15);
-  border-color: rgba(239, 83, 80, 0.3);
   color: var(--move-blunder);
+  background: rgba(239, 83, 80, 0.1);
+  border-color: rgba(239, 83, 80, 0.3);
+}
+
+.feedbackRevealed {
+  color: var(--brand-primary-light);
+  background: rgba(124, 92, 252, 0.1);
+  border-color: rgba(124, 92, 252, 0.3);
+}
+
+.turnHint {
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
 }
 
 /* ── Sidebar ── */
 .sidebar {
   display: flex;
   flex-direction: column;
-  gap: var(--space-lg);
+  gap: var(--space-md);
 }
 
 .card {
-  padding: var(--space-lg);
+  padding: var(--space-md);
   background: var(--bg-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
 }
 
 .cardTitle {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--text-muted);
+  margin-bottom: var(--space-sm);
+  font-size: 0.7rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: var(--space-md);
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
 }
 
-/* ── Stats ── */
+/* ── Stats grid ── */
 .statsGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: var(--space-md);
+  gap: var(--space-sm);
 }
 
 .statBox {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
+  padding: var(--space-sm);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  text-align: center;
 }
 
 .statValue {
-  font-size: 1.5rem;
   font-family: var(--font-mono);
-  font-weight: 700;
+  font-size: 1.25rem;
+  font-weight: 800;
+  line-height: 1.1;
   color: var(--text-primary);
 }
 
-.statLabel {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-}
-
 .streakValue {
-  color: var(--brand-secondary);
-}
-
-.ratingValue {
   color: var(--brand-primary-light);
 }
 
-/* ── Puzzle Info ── */
-.infoRow {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-sm) 0;
-  border-bottom: 1px solid var(--border-subtle);
+.statLabel {
+  font-size: 0.66rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
 }
 
-.infoRow:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
+/* ── Info rows ── */
+.infoRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 0;
+  font-size: 0.85rem;
+}
+
+.infoRow + .infoRow {
+  border-top: 1px solid var(--border-subtle);
 }
 
 .infoLabel {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
 }
 
 .infoValue {
   font-family: var(--font-mono);
   font-weight: 600;
-  font-size: 0.9rem;
   color: var(--text-primary);
 }
 
+/* ── Theme tags ── */
 .tags {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-xs);
+  gap: 5px;
   margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .tag {
-  padding: 3px 8px;
+  padding: 2px 8px;
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+}
+
+/* ── Actions ── */
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.actions > * {
+  width: 100%;
+}
+
+.secondaryAction {
+  padding: var(--space-sm) var(--space-md);
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-secondary);
   background: var(--bg-tertiary);
   border: 1px solid var(--border-medium);
-  border-radius: var(--radius-sm);
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-}
-
-/* ── SM-2 Info ── */
-.sm2Info {
-  margin-top: var(--space-md);
-  padding: var(--space-md);
-  background: var(--bg-tertiary);
   border-radius: var(--radius-md);
-  border: 1px solid var(--border-subtle);
-  font-size: 0.85rem;
-  color: var(--text-secondary);
+  transition: all var(--transition-fast);
 }
 
-.sm2Row {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 4px;
+.secondaryAction:hover {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border-color: var(--border-strong);
 }
 
-.sm2Row:last-child {
-  margin-bottom: 0;
-}
-
-/* ── Loading / Empty ── */
+/* ── States ── */
 .loadingState,
 .errorState {
   grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
+  min-height: 50vh;
   text-align: center;
-  padding: var(--space-3xl);
   color: var(--text-tertiary);
-  font-size: 1.1rem;
 }
 
-.errorState {
-  color: var(--move-blunder);
-}
-
-.nextButton {
-  margin-top: var(--space-md);
-  width: 100%;
+.errorState p {
+  max-width: 420px;
+  font-size: 0.95rem;
+  color: var(--text-secondary);
 }
 
 /* ── Responsive ── */
 @media (max-width: 900px) {
+  .puzzlesPage {
+    padding: 72px var(--space-md) var(--space-xl);
+  }
+
   .container {
-    grid-template-columns: 1fr;
-    max-width: 600px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-lg);
+  }
+
+  .statsGrid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (max-width: 520px) {
+  .statsGrid {
+    grid-template-columns: 1fr 1fr;
   }
 }
