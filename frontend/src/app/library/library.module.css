@@ -4,281 +4,147 @@
 }
 
 .container {
-  max-width: 900px;
+  max-width: 1000px;
   margin: 0 auto;
+}
+
+/* ── Header ── */
+.pageHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
 }
 
 .pageTitle {
   font-size: 2rem;
   font-weight: 700;
-  margin-bottom: var(--space-xl);
+  line-height: 1.2;
 }
 
-/* Import Card */
-.importCard {
-  padding: var(--space-xl);
-  background: var(--bg-glass);
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-xl);
-  margin-bottom: var(--space-xl);
+.pageSubtitle {
+  margin-top: var(--space-xs);
+  font-size: 0.9rem;
+  color: var(--text-tertiary);
 }
 
-.importTitle {
-  font-size: 1.2rem;
-  font-weight: 600;
-  margin-bottom: var(--space-md);
-}
-
-.importForm {
+/* ── Active URL-driven filter chip ── */
+.activeFilter {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
-}
-
-.platformToggle {
-  display: flex;
+  align-items: center;
   gap: var(--space-sm);
-}
-
-.platformBtn {
-  padding: var(--space-sm) var(--space-md);
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.platformBtn:hover {
-  border-color: var(--border-medium);
-  color: var(--text-primary);
-}
-
-.platformBtnActive {
-  border-color: var(--brand-primary);
-  background: rgba(124, 92, 252, 0.1);
+  width: fit-content;
+  max-width: 100%;
+  padding: 5px var(--space-sm) 5px var(--space-md);
+  margin-bottom: var(--space-md);
+  font-size: 0.82rem;
   color: var(--brand-primary-light);
+  background: rgba(124, 92, 252, 0.1);
+  border: 1px solid rgba(124, 92, 252, 0.3);
+  border-radius: var(--radius-full);
 }
 
-.inputRow {
-  display: flex;
-  gap: var(--space-sm);
+.activeFilter strong {
+  font-family: var(--font-mono);
+  font-weight: 700;
 }
 
-.input {
-  flex: 1;
-  padding: var(--space-sm) var(--space-md);
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-medium);
-  border-radius: var(--radius-md);
-  font-family: var(--font-sans);
-  font-size: 0.9rem;
-  color: var(--text-primary);
-  outline: none;
-  transition: border-color var(--transition-fast);
-}
-
-.input:focus {
-  border-color: var(--brand-primary);
-  box-shadow: 0 0 0 3px rgba(124, 92, 252, 0.15);
-}
-
-.input::placeholder {
-  color: var(--text-muted);
-}
-
-.uploadRow {
-  display: flex;
+.chipClear {
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-md);
-}
-
-.orDivider {
-  font-size: 0.8rem;
-  color: var(--text-tertiary);
-}
-
-.uploadLabel {
-  padding: var(--space-sm) var(--space-md);
-  background: var(--bg-tertiary);
-  border: 1px dashed var(--border-medium);
-  border-radius: var(--radius-md);
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  cursor: pointer;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 0.7rem;
+  color: var(--brand-primary-light);
+  background: rgba(124, 92, 252, 0.18);
+  border: none;
+  border-radius: var(--radius-full);
   transition: all var(--transition-fast);
 }
 
-.uploadLabel:hover {
-  border-color: var(--brand-primary);
+.chipClear:hover {
   color: var(--text-primary);
+  background: var(--brand-primary);
 }
 
-/* Search */
-.searchBar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-  margin-bottom: var(--space-md);
-}
-
-.searchInput {
-  flex: 1;
-  padding: var(--space-sm) var(--space-md);
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  font-family: var(--font-sans);
-  font-size: 0.9rem;
-  color: var(--text-primary);
-  outline: none;
-  transition: border-color var(--transition-fast);
-}
-
-.searchInput:focus {
-  border-color: var(--brand-primary);
-}
-
-.searchInput::placeholder {
-  color: var(--text-muted);
-}
-
-.gameCount {
-  font-size: 0.8rem;
-  color: var(--text-tertiary);
-  white-space: nowrap;
-}
-
-/* Game Cards */
+/* ── Games list ── */
 .gamesList {
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
 }
 
-.gameCard {
-  padding: var(--space-md);
-  background: var(--bg-glass);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  transition: all var(--transition-fast);
-  cursor: pointer;
-}
-
-.gameCard:hover {
-  border-color: var(--border-medium);
-  background: var(--bg-glass-hover);
-  transform: translateX(4px);
-}
-
-.gameMain {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--space-xs);
-}
-
-.gamePlayers {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  font-weight: 500;
-  font-size: 0.95rem;
-}
-
-.playerWhite, .playerBlack {
-  font-weight: 600;
-}
-
-.vs {
-  font-size: 0.75rem;
-  color: var(--text-tertiary);
-}
-
-.gameResult {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  font-size: 0.85rem;
-  padding: 2px 10px;
-  border-radius: var(--radius-full);
-}
-
-.resultWin {
-  background: rgba(102, 187, 106, 0.15);
-  color: var(--move-great);
-}
-
-.resultLoss {
-  background: rgba(239, 83, 80, 0.15);
-  color: var(--move-blunder);
-}
-
-.resultDraw {
-  background: rgba(160, 160, 184, 0.15);
-  color: var(--text-secondary);
-}
-
-.gameMeta {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  font-size: 0.8rem;
-  color: var(--text-tertiary);
-  flex-wrap: wrap;
-}
-
-.gameDot {
-  color: var(--text-muted);
-}
-
-.gameOpening {
-  color: var(--text-secondary);
-}
-
-.sourceBadge {
-  margin-left: auto;
-  padding: 2px 8px;
-  background: var(--bg-tertiary);
-  border-radius: var(--radius-full);
-  font-size: 0.7rem;
-}
-
-.gameActions {
-  margin-top: var(--space-sm);
-  display: flex;
-  gap: var(--space-sm);
-}
-
-/* Import Message */
-.importMessage {
-  font-size: 0.85rem;
-  color: var(--brand-primary-light);
-  padding: var(--space-sm) var(--space-md);
-  background: rgba(124, 92, 252, 0.08);
-  border-radius: var(--radius-md);
-  border: 1px solid rgba(124, 92, 252, 0.2);
-}
-
-/* Loading & Empty States */
-.loadingState,
-.emptyState {
+/* ── States ── */
+.loadingState {
   text-align: center;
-  padding: var(--space-xl) var(--space-md);
+  padding: var(--space-2xl) var(--space-md);
   color: var(--text-tertiary);
   font-size: 0.95rem;
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+  text-align: center;
+  padding: var(--space-2xl) var(--space-md);
+  color: var(--text-tertiary);
+  background: var(--bg-secondary);
+  border: 1px dashed var(--border-medium);
+  border-radius: var(--radius-lg);
+}
+
+.emptyIcon {
+  font-size: 2.5rem;
+  opacity: 0.35;
+  line-height: 1;
 }
 
 .emptyState p {
-  max-width: 400px;
-  margin: 0 auto;
-  line-height: 1.6;
+  max-width: 420px;
+  font-size: 0.95rem;
+  color: var(--text-secondary);
 }
 
-/* Pagination */
+.emptyHint {
+  font-size: 0.85rem !important;
+  color: var(--text-tertiary) !important;
+}
+
+.errorState {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+  padding: var(--space-sm) var(--space-md);
+  margin-bottom: var(--space-md);
+  font-size: 0.85rem;
+  color: var(--move-blunder);
+  background: rgba(239, 83, 80, 0.08);
+  border: 1px solid rgba(239, 83, 80, 0.25);
+  border-radius: var(--radius-md);
+}
+
+.retryLink {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--brand-primary-light);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.retryLink:hover {
+  color: var(--brand-primary);
+}
+
+/* ── Pagination ── */
 .pagination {
   display: flex;
   align-items: center;
@@ -295,13 +161,16 @@
 }
 
 @media (max-width: 600px) {
-  .inputRow {
-    flex-direction: column;
+  .libraryPage {
+    padding: 72px var(--space-md) var(--space-xl);
   }
 
-  .gamePlayers {
+  .pageHeader {
     flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
+    align-items: stretch;
+  }
+
+  .pageTitle {
+    font-size: 1.6rem;
   }
 }
