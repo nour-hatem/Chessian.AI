@@ -39,11 +39,10 @@ const FEATURES: {
     tag: "Adaptive",
   },
   {
-    icon: "🎯",
-    title: "Tactical Blindspot Map",
-    desc: "Identifies which tactical motifs you repeatedly miss — forks, pins, back-rank threats — across your entire game history.",
-    tag: "Planned",
-    soon: true,
+    icon: "📈",
+    title: "Personalized Improvement Plan",
+    desc: "A data-driven weekly curriculum tailored to your historical game patterns, weakest phase, and blunder frequency.",
+    tag: "Curriculum",
   },
   {
     icon: "🤖",

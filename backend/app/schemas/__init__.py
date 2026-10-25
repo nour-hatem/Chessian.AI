@@ -97,3 +97,48 @@ class GameAnalysisResponse(BaseModel):
     moves: list[MoveAnalysisResponse] = []
 
     model_config = {"from_attributes": True}
+
+
+# ---------- Improvement Plan Schemas (D1) ----------
+
+class WeaknessItem(BaseModel):
+    id: str
+    title: str
+    description: str
+    severity: str  # "high", "medium", "low"
+    expected_gain_elo: int
+    dimension: str  # "endgame", "tactics", "opening", "middlegame", "time"
+    metric: str
+
+
+class PlanTask(BaseModel):
+    id: str
+    title: str
+    category: str  # "puzzles", "openings", "endgame", "analysis", "play"
+    duration_minutes: int
+    description: str
+    action_url: str
+    action_label: str
+    completed: bool = False
+
+
+class ImprovementPlanResponse(BaseModel):
+    user_id: uuid.UUID
+    resolved_username: Optional[str] = None
+    total_games_analyzed: int
+    overall_accuracy: Optional[float] = None
+    opening_accuracy: Optional[float] = None
+    middlegame_accuracy: Optional[float] = None
+    endgame_accuracy: Optional[float] = None
+    weakest_phase: str
+    blunder_rate_per_game: float
+    mistake_rate_per_game: float
+    puzzle_rating_center: int
+    puzzles_due_count: int
+    puzzle_streak: int
+    coaching_summary: str
+    focus_headline: str
+    planned_hours: float
+    weaknesses: list[WeaknessItem]
+    tasks: list[PlanTask]
+

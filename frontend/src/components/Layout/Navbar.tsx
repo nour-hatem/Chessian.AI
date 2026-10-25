@@ -24,6 +24,7 @@ const NAV_ITEMS: {
   { href: "/library", label: "Library", icon: "📚" },
   { href: "/openings", label: "Openings", icon: "♞" },
   { href: "/puzzles", label: "Puzzles", icon: "🧩" },
+  { href: "/plan", label: "Plan", icon: "📈" },
 ];
 
 export default function Navbar() {
