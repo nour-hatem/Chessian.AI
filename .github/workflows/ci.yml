@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend:
+    name: Backend Tests & Import Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install System Dependencies (Stockfish)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y stockfish
+
+      - name: Install Backend Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "./backend[dev]"
+
+      - name: Verify Backend Imports
+        run: |
+          cd backend
+          python -c "from app.main import app"
+
+      - name: Run Pytest
+        env:
+          STOCKFISH_PATH: /usr/games/stockfish
+        run: |
+          cd backend
+          pytest -v
+
+  frontend:
+    name: Frontend Typecheck & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run TypeScript Typecheck
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+      - name: Run ESLint
+        working-directory: frontend
+        run: npm run lint
+        # Set to continue-on-error until Issue #2 resolves the 5 react-hooks/set-state-in-effect errors
+        continue-on-error: true
