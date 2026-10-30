@@ -140,8 +140,15 @@ export default function PuzzlesPage() {
   }, [clearTimers]);
 
   useEffect(() => {
-    fetchStats();
-    fetchNextPuzzle();
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      void fetchStats();
+      void fetchNextPuzzle();
+    });
+    return () => {
+      active = false;
+    };
   }, [fetchStats, fetchNextPuzzle]);
 
   /* ── Scoring ── */

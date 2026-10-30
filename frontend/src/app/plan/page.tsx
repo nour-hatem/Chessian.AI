@@ -74,7 +74,13 @@ export default function PlanPage() {
   };
 
   useEffect(() => {
-    fetchPlan();
+    let active = true;
+    queueMicrotask(() => {
+      if (active) void fetchPlan();
+    });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const handleToggleTask = async (taskId: string) => {

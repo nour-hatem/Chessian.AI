@@ -67,5 +67,3 @@ jobs:
       - name: Run ESLint
         working-directory: frontend
         run: npm run lint
-        # Set to continue-on-error until Issue #2 resolves the 5 react-hooks/set-state-in-effect errors
-        continue-on-error: true

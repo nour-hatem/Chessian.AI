@@ -61,9 +61,9 @@ function LibraryContent() {
   // Search is debounced separately so typing doesn't fire a request per key.
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
-  // ECO drill-down arrives via ?opening=<eco> from the openings table. Held in
-  // state so it can be dismissed without a navigation.
-  const [openingEco, setOpeningEco] = useState(openingParam);
+  // ECO drill-down comes from the URL; remember only a locally dismissed value.
+  const [dismissedOpening, setDismissedOpening] = useState("");
+  const openingEco = openingParam === dismissedOpening ? "" : openingParam;
 
   const [analyzing, setAnalyzing] = useState<Set<string>>(new Set());
   const pollTimersRef = useRef<Map<string, ReturnType<typeof setInterval>>>(
@@ -72,10 +72,6 @@ function LibraryContent() {
 
   const { result, analyzed, timeControl } = filters;
 
-  useEffect(() => {
-    setOpeningEco(openingParam);
-  }, [openingParam]);
-
   /* ─── Debounce the search field ─── */
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(filters.search), 300);
@@ -83,10 +79,6 @@ function LibraryContent() {
   }, [filters.search]);
 
   /* ─── Any filter change returns to the first page ─── */
-  useEffect(() => {
-    setPage(1);
-  }, [debouncedSearch, result, analyzed, timeControl, openingEco]);
-
   /* ─── Fetch ─── */
   const fetchGames = useCallback(async () => {
     setError("");
@@ -118,7 +110,13 @@ function LibraryContent() {
   }, [page, debouncedSearch, result, analyzed, timeControl, openingEco]);
 
   useEffect(() => {
-    fetchGames();
+    let active = true;
+    queueMicrotask(() => {
+      if (active) void fetchGames();
+    });
+    return () => {
+      active = false;
+    };
   }, [fetchGames]);
 
   /**
@@ -242,7 +240,13 @@ function LibraryContent() {
 
   const clearAllFilters = () => {
     setFilters({ ...EMPTY_FILTERS });
-    setOpeningEco("");
+    setDismissedOpening(openingParam);
+    setPage(1);
+  };
+
+  const handleFiltersChange = (nextFilters: LibraryFilterState) => {
+    setFilters(nextFilters);
+    setPage(1);
   };
 
   return (
@@ -271,7 +275,7 @@ function LibraryContent() {
 
           <LibraryFilters
             value={filters}
-            onChange={setFilters}
+            onChange={handleFiltersChange}
             totalGames={totalGames}
           />
 
@@ -282,7 +286,10 @@ function LibraryContent() {
               </span>
               <button
                 className={styles.chipClear}
-                onClick={() => setOpeningEco("")}
+                onClick={() => {
+                  setDismissedOpening(openingParam);
+                  setPage(1);
+                }}
                 aria-label="Clear opening filter"
               >
                 ✕
