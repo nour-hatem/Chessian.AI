@@ -15,7 +15,6 @@ interface ChessBoardProps {
   lastMove?: [string, string];
   viewOnly?: boolean;
   width?: number;
-  highlights?: Map<string, string>;
   /**
    * Show the flip control. Defaults to `interactive` for backwards
    * compatibility, but review boards (analysis) are non-interactive and still
@@ -47,7 +46,6 @@ export default function ChessBoard({
   interactive = true,
   lastMove,
   viewOnly = false,
-  highlights,
   allowFlip,
   revision = 0,
   allowPremoves,
