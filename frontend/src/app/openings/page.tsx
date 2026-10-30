@@ -95,6 +95,23 @@ export default function OpeningsPage() {
     return rows;
   }, [openings, sortKey]);
 
+  const openingInsights = useMemo(() => {
+    const withResults = openings.filter(
+      (opening) => opening.score_pct !== null,
+    );
+    const byScore = [...withResults].sort(
+      (a, b) => (b.score_pct ?? 0) - (a.score_pct ?? 0),
+    );
+
+    return {
+      mostPlayed: [...openings].sort(
+        (a, b) => b.games_played - a.games_played,
+      )[0],
+      bestResults: byScore[0],
+      reviewCandidate: byScore.length > 1 ? byScore[byScore.length - 1] : null,
+    };
+  }, [openings]);
+
   const SORTS: { key: SortKey; label: string }[] = [
     { key: "played", label: "Most played" },
     { key: "best", label: "Best accuracy" },
@@ -141,6 +158,98 @@ export default function OpeningsPage() {
                 ))}
               </div>
             </div>
+          )}
+
+          {!loading && !error && openings.length > 0 && (
+            <section className={styles.insights} aria-labelledby="opening-insights-title">
+              <div className={styles.insightsHeader}>
+                <div>
+                  <p className={styles.insightsEyebrow}>Your repertoire</p>
+                  <h2 id="opening-insights-title" className={styles.insightsTitle}>
+                    Opening pulse
+                  </h2>
+                </div>
+                <p className={styles.insightsNote}>
+                  Based on your analyzed games. Results reflect your side of the board.
+                </p>
+              </div>
+              <div className={styles.insightsGrid}>
+                <article className={styles.insightCard}>
+                  <span className={styles.insightLabel}>Most played</span>
+                  {openingInsights.mostPlayed ? (
+                    <>
+                      {openingInsights.mostPlayed.eco ? (
+                        <Link
+                          className={styles.insightOpening}
+                          href={`/library?opening=${encodeURIComponent(openingInsights.mostPlayed.eco)}`}
+                        >
+                          {openingInsights.mostPlayed.name}
+                        </Link>
+                      ) : (
+                        <strong className={styles.insightOpening}>
+                          {openingInsights.mostPlayed.name}
+                        </strong>
+                      )}
+                      <span className={styles.insightDetail}>
+                        {openingInsights.mostPlayed.games_played} analyzed games
+                      </span>
+                    </>
+                  ) : null}
+                </article>
+                <article className={styles.insightCard}>
+                  <span className={styles.insightLabel}>Best results</span>
+                  {identityResolved && openingInsights.bestResults ? (
+                    <>
+                      {openingInsights.bestResults.eco ? (
+                        <Link
+                          className={styles.insightOpening}
+                          href={`/library?opening=${encodeURIComponent(openingInsights.bestResults.eco)}`}
+                        >
+                          {openingInsights.bestResults.name}
+                        </Link>
+                      ) : (
+                        <strong className={styles.insightOpening}>
+                          {openingInsights.bestResults.name}
+                        </strong>
+                      )}
+                      <span className={styles.insightDetail}>
+                        {formatPct(openingInsights.bestResults.score_pct)} score across {openingInsights.bestResults.games_played} games
+                      </span>
+                    </>
+                  ) : (
+                    <span className={styles.insightDetail}>Player identity is needed to calculate results.</span>
+                  )}
+                </article>
+                <article className={styles.insightCard}>
+                  <span className={styles.insightLabel}>Review candidate</span>
+                  {identityResolved && openingInsights.reviewCandidate ? (
+                    <>
+                      {openingInsights.reviewCandidate.eco ? (
+                        <Link
+                          className={styles.insightOpening}
+                          href={`/library?opening=${encodeURIComponent(openingInsights.reviewCandidate.eco)}`}
+                        >
+                          {openingInsights.reviewCandidate.name}
+                        </Link>
+                      ) : (
+                        <strong className={styles.insightOpening}>
+                          {openingInsights.reviewCandidate.name}
+                        </strong>
+                      )}
+                      <span className={styles.insightDetail}>
+                        Lowest score in your repertoire: {formatPct(openingInsights.reviewCandidate.score_pct)}
+                      </span>
+                    </>
+                  ) : (
+                    <span className={styles.insightDetail}>
+                      {identityResolved
+                        ? "Track another opening to compare results."
+                        : "Player identity is needed to compare results."}
+                    </span>
+                  )}
+                </article>
+              </div>
+            </section>
           )}
 
           {loading && <div className={styles.loadingState}>Loading openings…</div>}
